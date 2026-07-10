@@ -151,6 +151,27 @@ export default function OwnerSection({
   // Navigation inside owner section (various views: employees | finance | settings | stats | security)
   const [activeSubTab, setActiveSubTab] = useState<"employees" | "finance" | "settings" | "stats" | "security">("employees");
   const [confirmResetMode, setConfirmResetMode] = useState<ResetAppMode | null>(null);
+  const [resetConfirmWord, setResetConfirmWord] = useState("");
+
+  const startReset = (mode: ResetAppMode) => {
+    setConfirmResetMode(mode);
+    setResetConfirmWord("");
+  };
+
+  const cancelReset = () => {
+    setConfirmResetMode(null);
+    setResetConfirmWord("");
+  };
+
+  const confirmReset = (mode: ResetAppMode) => {
+    if (resetConfirmWord !== "СБРОС") {
+      alert("Для подтверждения введите слово СБРОС (заглавными буквами).");
+      return;
+    }
+    setConfirmResetMode(null);
+    setResetConfirmWord("");
+    onResetApp?.(mode);
+  };
 
   // Collapsed states for blocks
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
@@ -4268,7 +4289,7 @@ export default function OwnerSection({
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">Сброс данных программы</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Необратимое удаление данных. <span className="text-amber-600 font-semibold">Перед сбросом будет автоматически создана резервная копия.</span>
+                    Необратимое удаление данных.
                   </p>
                 </div>
               </div>
@@ -4281,20 +4302,27 @@ export default function OwnerSection({
                     Сохраняются: тарифы (эквайринг, солярий), калькулятор услуг, сотрудники, пароль владелицы.
                   </p>
                   {confirmResetMode === "preserveTariffs" ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onResetApp("preserveTariffs");
-                        setConfirmResetMode(null);
-                      }}
-                      className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white animate-pulse"
-                    >
-                      Подтвердить сброс?
-                    </button>
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={resetConfirmWord}
+                        onChange={(e) => setResetConfirmWord(e.target.value)}
+                        placeholder="Введите СБРОС"
+                        className="w-full px-3 py-2 rounded-lg border border-red-200 text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-red-300"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => confirmReset("preserveTariffs")}
+                        className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Подтвердить сброс
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setConfirmResetMode("preserveTariffs")}
+                      onClick={() => startReset("preserveTariffs")}
                       className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-600 hover:bg-amber-700 text-white"
                     >
                       Сбросить данные
@@ -4309,20 +4337,27 @@ export default function OwnerSection({
                     ставок администраторов и списка сотрудников к заводским значениям.
                   </p>
                   {confirmResetMode === "full" ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onResetApp("full");
-                        setConfirmResetMode(null);
-                      }}
-                      className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-red-700 hover:bg-red-800 text-white animate-pulse"
-                    >
-                      Подтвердить полный сброс?
-                    </button>
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={resetConfirmWord}
+                        onChange={(e) => setResetConfirmWord(e.target.value)}
+                        placeholder="Введите СБРОС"
+                        className="w-full px-3 py-2 rounded-lg border border-red-200 text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-red-300"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => confirmReset("full")}
+                        className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-red-700 hover:bg-red-800 text-white"
+                      >
+                        Подтвердить полный сброс
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setConfirmResetMode("full")}
+                      onClick={() => startReset("full")}
                       className="w-full py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white"
                     >
                       Полный сброс
@@ -4334,7 +4369,7 @@ export default function OwnerSection({
               {confirmResetMode && (
                 <button
                   type="button"
-                  onClick={() => setConfirmResetMode(null)}
+                  onClick={cancelReset}
                   className="text-xs font-semibold text-slate-500 hover:text-slate-700"
                 >
                   Отмена

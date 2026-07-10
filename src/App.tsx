@@ -31,7 +31,7 @@ import {
   INITIAL_ADMIN_DAYS_RATES_RULES,
   DEFAULT_APP_PREFERENCES,
 } from "./initialData";
-import { confirmResetAction, getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
+import { getResetSuccessMessage, persistToStorage, ResetAppMode } from "./utils/resetAppData";
 
 // Components
 import DailyAccounting from "./components/DailyAccounting";
@@ -427,14 +427,6 @@ export default function App() {
   // Administrative Backup utility to let Owner export/import SQLite alternatives
   const handleResetApp = (mode: ResetAppMode) => {
     const preserveTariffs = mode === "preserveTariffs";
-    const description = preserveTariffs
-      ? "Сбросить все операционные данные (визиты, кассу, зарплаты, сертификаты, долги) и настройки интерфейса?\n\nТарифы, сотрудники и пароль владелицы будут сохранены."
-      : "Полный сброс: удалить ВСЕ данные и восстановить заводские тарифы, сотрудников и настройки калькулятора?\n\nПароль владелицы будет сохранён.";
-
-    if (!confirmResetAction(description)) return;
-
-    // Принудительный экспорт текущих данных перед сбросом
-    handleExportBackup();
 
     setVisits(INITIAL_VISITS);
     setSolariumSessions(INITIAL_SOLARIUM_SESSIONS);
@@ -445,6 +437,15 @@ export default function App() {
     setGiftCertificates([]);
     setDebtRecords([]);
     setSelectedDate(getTodayDateString());
+
+    persistToStorage("eva_style_visits", INITIAL_VISITS);
+    persistToStorage("eva_style_solarium_sessions", INITIAL_SOLARIUM_SESSIONS);
+    persistToStorage("eva_style_extra_transactions", INITIAL_EXTRA_TRANSACTIONS);
+    persistToStorage("eva_style_master_transactions", INITIAL_MASTER_TRANSACTIONS);
+    persistToStorage("eva_style_admin_shifts", INITIAL_ADMIN_SHIFTS);
+    persistToStorage("eva_style_daily_cash", INITIAL_DAILY_CASH);
+    persistToStorage("eva_style_gift_certificates", []);
+    persistToStorage("eva_style_debt_records", []);
 
     setShowDeletedVisits(DEFAULT_APP_PREFERENCES.showDeletedVisits);
     setAllowDeleteVisits(DEFAULT_APP_PREFERENCES.allowDeleteVisits);
@@ -457,6 +458,16 @@ export default function App() {
     setAutoLockDuration(DEFAULT_APP_PREFERENCES.autoLockDuration);
     setIsOwnerUnlocked(false);
 
+    persistToStorage("eva_style_show_deleted_visits", DEFAULT_APP_PREFERENCES.showDeletedVisits);
+    persistToStorage("eva_style_allow_delete_visits", DEFAULT_APP_PREFERENCES.allowDeleteVisits);
+    persistToStorage("eva_style_allow_delete_certificates", DEFAULT_APP_PREFERENCES.allowDeleteCertificates);
+    persistToStorage("eva_style_show_visit_change_history", DEFAULT_APP_PREFERENCES.showVisitChangeHistory);
+    persistToStorage("eva_style_allow_master_payouts", DEFAULT_APP_PREFERENCES.allowMasterPayouts);
+    persistToStorage("eva_style_allow_admin_shift_edits", DEFAULT_APP_PREFERENCES.allowAdminShiftEdits);
+    persistToStorage("eva_style_hide_formula_calculations", DEFAULT_APP_PREFERENCES.hideFormulaCalculations);
+    persistToStorage("eva_style_keep_owner_unlocked", DEFAULT_APP_PREFERENCES.keepOwnerUnlocked);
+    persistToStorage("eva_style_auto_lock_duration", DEFAULT_APP_PREFERENCES.autoLockDuration);
+
     if (!preserveTariffs) {
       setSettingsRules(INITIAL_SETTINGS_RULES);
       setMaterialPackaging(INITIAL_MATERIAL_PACKAGING);
@@ -465,6 +476,14 @@ export default function App() {
       setAdminDaysRatesRules(INITIAL_ADMIN_DAYS_RATES_RULES);
       setEmployees(INITIAL_EMPLOYEES);
       setMaterialPrices(INITIAL_RAW_MATERIAL_PRICES);
+
+      persistToStorage("eva_style_settings_rules", INITIAL_SETTINGS_RULES);
+      persistToStorage("eva_style_material_packaging", INITIAL_MATERIAL_PACKAGING);
+      persistToStorage("eva_style_material_consumptions", INITIAL_MATERIAL_CONSUMPTIONS);
+      persistToStorage("eva_style_admin_days_rates", INITIAL_ADMIN_DAYS_RATES);
+      persistToStorage("eva_style_admin_days_rates_rules", INITIAL_ADMIN_DAYS_RATES_RULES);
+      persistToStorage("eva_style_employees", INITIAL_EMPLOYEES);
+      persistToStorage("eva_style_material_prices", INITIAL_RAW_MATERIAL_PRICES);
     }
 
     alert(getResetSuccessMessage(mode));
@@ -492,11 +511,7 @@ export default function App() {
     const desktop = (window as any).evaStyleDesktop;
     if (desktop?.isDesktop && desktop.saveBackup) {
       const result = await desktop.saveBackup({ fileName, content });
-      if (result.success) {
-        alert(`Резервная копия сохранена:\n${result.path}`);
-      } else {
-        alert("Сохранение резервной копии отменено.");
-      }
+      return result.success;
     } else {
       const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(content)}`;
       const downloadAnchor = document.createElement("a");
@@ -505,6 +520,7 @@ export default function App() {
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
+      return true;
     }
   };
 

@@ -13,3 +13,8 @@ export function getResetSuccessMessage(mode: ResetAppMode): string {
   }
   return "Выполнен полный сброс: все данные и тарифы восстановлены к заводским значениям. Пароль владелицы сохранён.";
 }
+
+/** Сразу записывает значение в localStorage (не ждёт useEffect) */
+export function persistToStorage(key: string, value: unknown): void {
+  localStorage.setItem(key, JSON.stringify(value));
+}

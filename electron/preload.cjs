@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const { version } = require("../package.json");
 
 contextBridge.exposeInMainWorld("evaStyleDesktop", {
   platform: process.platform,
   isDesktop: true,
-  version: "1.0.5",
+  version,
+  isPortable: !!process.env.PORTABLE_EXECUTABLE_DIR,
   saveBackup: (payload) => ipcRenderer.invoke("save-backup", payload),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
 });

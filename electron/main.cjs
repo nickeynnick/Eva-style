@@ -1,8 +1,13 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { setupAutoUpdater } = require("./updater.cjs");
 
 const isDev = !app.isPackaged;
+const isPortable = !!process.env.PORTABLE_EXECUTABLE_DIR;
+const APP_VERSION = app.getVersion();
+
+let updaterControls = null;
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -43,6 +48,31 @@ function createWindow() {
 }
 
 function buildMenu(mainWindow) {
+  const helpSubmenu = [
+    {
+      label: "О программе",
+      click: () => {
+        const updateNote = isPortable
+          ? "\n\nАвтообновление доступно только в установленной версии."
+          : "\n\nОбновления проверяются автоматически при запуске.";
+        dialog.showMessageBox(mainWindow, {
+          type: "info",
+          title: "Ева-стиль",
+          message: "Ева-стиль — Учётный пульт",
+          detail: `Программа для управления салоном красоты «Ева-стиль».\n\nВерсия ${APP_VERSION}\nДанные хранятся локально на вашем компьютере.${updateNote}`,
+          buttons: ["OK"],
+        });
+      },
+    },
+  ];
+
+  if (!isDev && !isPortable && updaterControls) {
+    helpSubmenu.unshift({
+      label: "Проверить обновления",
+      click: () => updaterControls.checkForUpdates(true),
+    });
+  }
+
   const template = [
     {
       label: "Файл",
@@ -94,24 +124,34 @@ function buildMenu(mainWindow) {
     },
     {
       label: "Справка",
-      submenu: [
-        {
-          label: "О программе",
-          click: () => {
-            dialog.showMessageBox(mainWindow, {
-              type: "info",
-              title: "Ева-стиль",
-              message: "Ева-стиль — Учётный пульт",
-              detail: "Программа для управления салоном красоты «Ева-стиль».\n\nВерсия 1.0.4\nДанные хранятся локально на вашем компьютере.",
-              buttons: ["OK"],
-            });
-          },
-        },
-      ],
+      submenu: helpSubmenu,
     },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function setupIpc(mainWindow) {
+  ipcMain.handle("save-backup", async (_event, { fileName, content }) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Сохранить резервную копию",
+      defaultPath: path.join(app.getPath("documents"), fileName),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!result.canceled && result.filePath) {
+      fs.writeFileSync(result.filePath, content, "utf-8");
+      return { success: true, path: result.filePath };
+    }
+    return { success: false };
+  });
+
+  ipcMain.handle("check-for-updates", async () => {
+    if (isDev) return { status: "dev" };
+    if (isPortable) return { status: "portable" };
+    if (!updaterControls) return { status: "unavailable" };
+    await updaterControls.checkForUpdates(true);
+    return { status: "checking" };
+  });
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -128,25 +168,15 @@ if (!gotTheLock) {
     }
   });
 
-function setupIpc(mainWindow) {
-  ipcMain.handle("save-backup", async (_event, { fileName, content }) => {
-    const result = await dialog.showSaveDialog(mainWindow, {
-      title: "Сохранить резервную копию",
-      defaultPath: path.join(app.getPath("documents"), fileName),
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (!result.canceled && result.filePath) {
-      fs.writeFileSync(result.filePath, content, "utf-8");
-      return { success: true, path: result.filePath };
-    }
-    return { success: false };
-  });
-}
-
   app.whenReady().then(() => {
     const mainWindow = createWindow();
-    buildMenu(mainWindow);
     setupIpc(mainWindow);
+
+    if (!isDev && !isPortable) {
+      updaterControls = setupAutoUpdater(mainWindow, APP_VERSION);
+    }
+
+    buildMenu(mainWindow);
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
