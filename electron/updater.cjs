@@ -3,7 +3,6 @@ const { autoUpdater } = require("electron-updater");
 
 /**
  * Извлекает текст списка изменений из ответа electron-updater.
- * releaseNotes может быть строкой или массивом объектов [{note: "..."}].
  */
 function formatReleaseNotes(info) {
   const notes = info?.releaseNotes;
@@ -17,6 +16,7 @@ function formatReleaseNotes(info) {
 
 function setupAutoUpdater(mainWindow, appVersion) {
   let manualCheck = false;
+  let downloadStarted = false;
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -30,6 +30,8 @@ function setupAutoUpdater(mainWindow, appVersion) {
 
   autoUpdater.on("update-available", (info) => {
     manualCheck = false;
+    downloadStarted = false;
+    mainWindow.setProgressBar(-1); // сброс прогресса
     const changelog = formatReleaseNotes(info);
     const detail = `Текущая версия: ${appVersion}` +
       (changelog ? `\n\nСписок изменений:\n${changelog}` : "") +
@@ -47,14 +49,36 @@ function setupAutoUpdater(mainWindow, appVersion) {
       })
       .then(({ response }) => {
         if (response === 0) {
+          downloadStarted = true;
+          dialog.showMessageBox(mainWindow, {
+            type: "info",
+            title: "Загрузка обновления",
+            message: "Начинается загрузка обновления…",
+            detail: "Прогресс отображается на иконке программы в панели задач.\n\nПосле завершения загрузки появится уведомление.",
+            buttons: ["OK"],
+          });
           autoUpdater.downloadUpdate();
         }
       });
   });
 
+  autoUpdater.on("download-progress", (progress) => {
+    if (!downloadStarted) return;
+    const fraction = progress.percent / 100;
+    mainWindow.setProgressBar(fraction);
+    // Обновляем заголовок окна с процентом
+    const pct = Math.round(progress.percent);
+    mainWindow.setTitle(`Ева-стиль — Учётный пульт (загрузка обновления: ${pct}%)`);
+    // Восстанавливаем заголовок, когда прогресс близок к 100%
+    if (pct >= 99) {
+      mainWindow.setTitle("Ева-стиль — Учётный пульт");
+    }
+  });
+
   autoUpdater.on("update-not-available", () => {
     if (!manualCheck) return;
     manualCheck = false;
+    mainWindow.setProgressBar(-1);
     dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Обновления",
@@ -65,6 +89,9 @@ function setupAutoUpdater(mainWindow, appVersion) {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    downloadStarted = false;
+    mainWindow.setProgressBar(-1);
+    mainWindow.setTitle("Ева-стиль — Учётный пульт");
     const changelog = formatReleaseNotes(info);
     const detail = (changelog ? `Список изменений:\n${changelog}\n\n` : "") +
       "Перезапустить программу для установки обновления?";
@@ -89,6 +116,9 @@ function setupAutoUpdater(mainWindow, appVersion) {
   autoUpdater.on("error", (error) => {
     if (!manualCheck) return;
     manualCheck = false;
+    downloadStarted = false;
+    mainWindow.setProgressBar(-1);
+    mainWindow.setTitle("Ева-стиль — Учётный пульт");
     const hint = error?.message?.includes("404")
       ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
       : "";
@@ -106,6 +136,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
     return autoUpdater.checkForUpdates().catch((error) => {
       if (manual) {
         manualCheck = false;
+        mainWindow.setProgressBar(-1);
         const hint = error?.message?.includes("404")
           ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
           : "";
