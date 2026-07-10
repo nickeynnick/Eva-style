@@ -43,6 +43,7 @@ import OwnerSection from "./components/OwnerSection";
 import OwnerPasswordPrompt from "./components/OwnerPasswordPrompt";
 import InteractiveHelp from "./components/InteractiveHelp";
 import CertificatesAndDebts from "./components/CertificatesAndDebts";
+import WelcomeOverlay from "./components/WelcomeOverlay";
 
 import { 
   Heart, 
@@ -76,6 +77,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Mark app as initialized after first launch (no pre-filled data on first run)
+  useEffect(() => {
+    localStorage.setItem("eva_style_app_initialized", "1");
+  }, []);
+
   // Selected date synchronized globally (defaults to current date, matching timezone)
   const getTodayDateString = () => {
     const today = new Date();
@@ -89,7 +95,9 @@ export default function App() {
   // --- CORE SYSTEM STATES WITH LOCAL STORAGE RECOVERY ---
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const saved = localStorage.getItem("eva_style_employees");
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
+    if (saved) return JSON.parse(saved);
+    const initialized = localStorage.getItem("eva_style_app_initialized");
+    return initialized ? INITIAL_EMPLOYEES : [];
   });
 
   const [visits, setVisits] = useState<Visit[]>(() => {
@@ -456,7 +464,6 @@ export default function App() {
     setHideFormulaCalculations(DEFAULT_APP_PREFERENCES.hideFormulaCalculations);
     setKeepOwnerUnlocked(DEFAULT_APP_PREFERENCES.keepOwnerUnlocked);
     setAutoLockDuration(DEFAULT_APP_PREFERENCES.autoLockDuration);
-    setIsOwnerUnlocked(false);
 
     persistToStorage("eva_style_show_deleted_visits", DEFAULT_APP_PREFERENCES.showDeletedVisits);
     persistToStorage("eva_style_allow_delete_visits", DEFAULT_APP_PREFERENCES.allowDeleteVisits);
@@ -554,6 +561,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800" id="eva_style_root">
+      <WelcomeOverlay />
+
       {/* Top High Density Administrative Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm" id="app-header-bar">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
@@ -801,7 +810,7 @@ export default function App() {
           <span className="hidden md:inline border-l border-slate-300 pl-4 text-slate-400">Шифрование сессий: <span className="text-rose-700 font-bold">Активно</span></span>
         </div>
         <div className="text-[10px] text-slate-500 font-bold">
-          © 2026 Ева-стиль v1.0.4 · Windows
+          © 2026 Ева-стиль v1.1.0 · Windows
         </div>
       </footer>
     </div>

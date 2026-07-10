@@ -1,6 +1,6 @@
 param(
     [string]$Repo = "nickeynnick/Eva-style",
-    [string]$Tag = "v1.0.5"
+    [string]$Tag = "v1.1.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,10 +27,11 @@ try {
     Write-Host "No existing release to delete"
 }
 
+$version = $Tag -replace '^v', ''
 $notes = [System.IO.File]::ReadAllText((Join-Path $projectRoot "release-notes.md"), [System.Text.Encoding]::UTF8)
 $payload = [ordered]@{
     tag_name = $Tag
-    name = "1.0.5"
+    name = $version
     body = $notes
     draft = $false
     prerelease = $false
@@ -41,8 +42,8 @@ $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" 
 Write-Host "Created release ID: $($release.id)"
 
 $assets = @(
-    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\eva-style-setup-*.exe") | Select-Object -First 1).FullName; Name = "eva-style-setup-1.0.5.exe"; Type = "application/octet-stream" },
-    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\*-portable.exe") | Select-Object -First 1).FullName; Name = "eva-style-1.0.5-portable.exe"; Type = "application/octet-stream" },
+    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\eva-style-setup-*.exe") | Select-Object -First 1).FullName; Name = "eva-style-setup-$version.exe"; Type = "application/octet-stream" },
+    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\*-portable.exe") | Select-Object -First 1).FullName; Name = "eva-style-$version-portable.exe"; Type = "application/octet-stream" },
     @{ Path = (Join-Path $projectRoot "release\latest.yml"); Name = "latest.yml"; Type = "text/yaml" }
 )
 
