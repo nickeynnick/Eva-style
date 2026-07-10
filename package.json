@@ -2,7 +2,7 @@
   "name": "eva-style",
   "productName": "Ева-стиль",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Программа для управления салоном красоты «Ева-стиль»",
   "author": "Ева-стиль",
   "type": "module",
@@ -15,7 +15,9 @@
     "lint": "tsc --noEmit",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:3000 && electron .\"",
     "electron:build": "npm run build && electron-builder --win",
-    "dist": "npm run electron:build"
+    "electron:build:portable": "npm run build && electron-builder --win portable",
+    "dist": "npm run electron:build",
+    "dist:all": "npm run electron:build && npm run electron:build:portable"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -60,6 +62,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
@@ -76,6 +84,10 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Ева-стиль",
       "language": "1049"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}",
+      "requestedExecutionLevel": "asInvoker"
     }
   }
 }

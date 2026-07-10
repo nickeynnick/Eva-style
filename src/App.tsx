@@ -433,6 +433,9 @@ export default function App() {
 
     if (!confirmResetAction(description)) return;
 
+    // Принудительный экспорт текущих данных перед сбросом
+    handleExportBackup();
+
     setVisits(INITIAL_VISITS);
     setSolariumSessions(INITIAL_SOLARIUM_SESSIONS);
     setExtraTransactions(INITIAL_EXTRA_TRANSACTIONS);

@@ -4268,7 +4268,7 @@ export default function OwnerSection({
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">Сброс данных программы</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Необратимое удаление данных. Рекомендуется предварительно сделать резервную копию (кнопка в шапке).
+                    Необратимое удаление данных. <span className="text-amber-600 font-semibold">Перед сбросом будет автоматически создана резервная копия.</span>
                   </p>
                 </div>
               </div>
