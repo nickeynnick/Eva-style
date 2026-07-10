@@ -42,8 +42,8 @@ $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" 
 Write-Host "Created release ID: $($release.id)"
 
 $assets = @(
-    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\eva-style-setup-*.exe") | Select-Object -First 1).FullName; Name = "eva-style-setup-$version.exe"; Type = "application/octet-stream" },
-    @{ Path = (Get-ChildItem (Join-Path $projectRoot "release\*-portable.exe") | Select-Object -First 1).FullName; Name = "eva-style-$version-portable.exe"; Type = "application/octet-stream" },
+    @{ Path = (Join-Path $projectRoot "release\eva-style-setup-$version.exe"); Name = "eva-style-setup-$version.exe"; Type = "application/octet-stream" },
+    @{ Path = (Join-Path $projectRoot "release\eva-style-$version-portable.exe"); Name = "eva-style-$version-portable.exe"; Type = "application/octet-stream" },
     @{ Path = (Join-Path $projectRoot "release\latest.yml"); Name = "latest.yml"; Type = "text/yaml" }
 )
 
