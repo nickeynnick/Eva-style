@@ -87,7 +87,7 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}",
-      "requestedExecutionLevel": "asInvoker"
+      "requestExecutionLevel": "user"
     }
   }
 }

@@ -470,7 +470,7 @@ export default function App() {
     alert(getResetSuccessMessage(mode));
   };
 
-  const handleExportBackup = () => {
+  const handleExportBackup = async () => {
     const data = {
       employees,
       visits,
@@ -486,13 +486,26 @@ export default function App() {
       giftCertificates,
       debtRecords,
     };
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
-    const downloadAnchor = document.createElement("a");
-    downloadAnchor.setAttribute("href", jsonString);
-    downloadAnchor.setAttribute("download", `eva_style_export_${selectedDate}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const content = JSON.stringify(data, null, 2);
+    const fileName = `eva_style_export_${selectedDate}.json`;
+
+    const desktop = (window as any).evaStyleDesktop;
+    if (desktop?.isDesktop && desktop.saveBackup) {
+      const result = await desktop.saveBackup({ fileName, content });
+      if (result.success) {
+        alert(`Резервная копия сохранена:\n${result.path}`);
+      } else {
+        alert("Сохранение резервной копии отменено.");
+      }
+    } else {
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(content)}`;
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", jsonString);
+      downloadAnchor.setAttribute("download", fileName);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {

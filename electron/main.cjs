@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 const isDev = !app.isPackaged;
 
@@ -127,9 +128,25 @@ if (!gotTheLock) {
     }
   });
 
+function setupIpc(mainWindow) {
+  ipcMain.handle("save-backup", async (_event, { fileName, content }) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Сохранить резервную копию",
+      defaultPath: path.join(app.getPath("documents"), fileName),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!result.canceled && result.filePath) {
+      fs.writeFileSync(result.filePath, content, "utf-8");
+      return { success: true, path: result.filePath };
+    }
+    return { success: false };
+  });
+}
+
   app.whenReady().then(() => {
     const mainWindow = createWindow();
     buildMenu(mainWindow);
+    setupIpc(mainWindow);
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
