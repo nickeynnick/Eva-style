@@ -42,50 +42,6 @@
 
 В десктопной версии экспорт открывает диалог «Сохранить как…».
 
-## Запуск для разработки
-
-```bash
-npm install
-npm run electron:dev
-```
-
-> В PowerShell, если `npm` не запускается из-за политики выполнения скриптов, используйте `npm.cmd run electron:dev`.
-
-## Сборка
-
-Установщик и портативная версия:
-
-```bash
-npm install
-npm run dist:all
-```
-
-Только установщик:
-
-```bash
-npm run dist
-```
-
-Готовые файлы появятся в папке `release/`:
-
-| Файл | Описание |
-|---|---|
-| `eva-style-setup-1.1.0.exe` | Установщик NSIS |
-| `eva-style-1.1.0-portable.exe` | Портативная версия |
-| `latest.yml` | Метаданные для автообновления |
-| `win-unpacked/` | Распакованное приложение |
-
-## Публикация релиза на GitHub
-
-1. Обновите версию в `package.json` и `CHANGELOG.md`
-2. Соберите: `npm run dist:all`
-3. Создайте тег и релиз на GitHub, приложив:
-   - `eva-style-setup-X.X.X.exe`
-   - `eva-style-X.X.X-portable.exe`
-   - `latest.yml`
-
-Без файла `latest.yml` автообновление не сработает.
-
 ## История изменений
 
 См. [CHANGELOG.md](CHANGELOG.md)
