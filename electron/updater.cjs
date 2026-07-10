@@ -19,7 +19,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
   let downloadStarted = false;
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   // Если задан GH_TOKEN (приватный репо), передаём его апдейтеру
   if (process.env.GH_TOKEN) {
@@ -66,13 +66,8 @@ function setupAutoUpdater(mainWindow, appVersion) {
     if (!downloadStarted) return;
     const fraction = progress.percent / 100;
     mainWindow.setProgressBar(fraction);
-    // Обновляем заголовок окна с процентом
     const pct = Math.round(progress.percent);
-    mainWindow.setTitle(`Ева-стиль — Учётный пульт (загрузка обновления: ${pct}%)`);
-    // Восстанавливаем заголовок, когда прогресс близок к 100%
-    if (pct >= 99) {
-      mainWindow.setTitle("Ева-стиль — Учётный пульт");
-    }
+    mainWindow.setTitle(`Ева-стиль — Учётный пульт (загрузка: ${pct}%)`);
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -114,7 +109,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
   });
 
   autoUpdater.on("error", (error) => {
-    if (!manualCheck) return;
+    if (!manualCheck && !downloadStarted) return;
     manualCheck = false;
     downloadStarted = false;
     mainWindow.setProgressBar(-1);
@@ -125,7 +120,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
     dialog.showMessageBox(mainWindow, {
       type: "error",
       title: "Ошибка обновления",
-      message: "Не удалось проверить обновления.",
+      message: downloadStarted ? "Ошибка при скачивании обновления." : "Не удалось проверить обновления.",
       detail: (error?.message || "Проверьте подключение к интернету.") + hint,
       buttons: ["OK"],
     });
