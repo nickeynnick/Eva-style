@@ -1,71 +1,70 @@
-import React, { useState, useEffect } from "react";
-import { 
-  Employee, 
-  Visit, 
-  SolariumSession, 
-  ExtraTransaction, 
-  MasterTransaction, 
-  AdminShift, 
-  DailyCashState, 
-  SettingsRule, 
-  RawMaterialPrices, 
-  AdminDayOfWeekRate, 
-  AdminDaysRateRule,
-  Position,
-  GiftCertificate,
-  DebtRecord,
-} from "./types";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import {
-  INITIAL_EMPLOYEES,
-  INITIAL_VISITS,
-  INITIAL_SOLARIUM_SESSIONS,
-  INITIAL_EXTRA_TRANSACTIONS,
-  INITIAL_MASTER_TRANSACTIONS,
-  INITIAL_ADMIN_SHIFTS,
-  INITIAL_DAILY_CASH,
-  INITIAL_SETTINGS_RULES,
-  INITIAL_RAW_MATERIAL_PRICES,
-  INITIAL_ADMIN_DAYS_RATES,
-  INITIAL_MATERIAL_PACKAGING,
-  INITIAL_MATERIAL_CONSUMPTIONS,
-  INITIAL_ADMIN_DAYS_RATES_RULES,
-  DEFAULT_APP_PREFERENCES,
-} from "./initialData";
-import { getResetSuccessMessage, persistToStorage, ResetAppMode } from "./utils/resetAppData";
-
-// Components
-import DailyAccounting from "./components/DailyAccounting";
-import ServiceCalculator from "./components/ServiceCalculator";
-import Solarium from "./components/Solarium";
-import MasterSalaries from "./components/MasterSalaries";
-import AdminSalaries from "./components/AdminSalaries";
-import OwnerSection from "./components/OwnerSection";
-import OwnerPasswordPrompt from "./components/OwnerPasswordPrompt";
-import InteractiveHelp from "./components/InteractiveHelp";
-import CertificatesAndDebts from "./components/CertificatesAndDebts";
-import WelcomeOverlay from "./components/WelcomeOverlay";
-
-import { 
-  Heart, 
-  Activity, 
-  Database, 
-  Sun, 
-  PlusCircle, 
-  FileText, 
-  ShieldCheck, 
-  Menu, 
-  Download, 
+  Heart,
+  Download,
   Upload,
   Clock,
 } from "lucide-react";
+import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
+import { serializeBackup, shouldRunAutoBackup } from "./utils/backupData";
+import { validateBackupImport } from "./utils/backupImport";
+import GlobalSearch from "./components/GlobalSearch";
+import WelcomeOverlay from "./components/WelcomeOverlay";
+import ImportPreviewModal from "./components/ImportPreviewModal";
+import WhatsNewModal from "./components/WhatsNewModal";
+import { getChangelogForVersion } from "./data/changelog";
+import {
+  useAppStore,
+  useStorePreferences,
+  useStoreMeta,
+  AppStorePatch,
+} from "./store";
+
+import DailyAccounting from "./components/DailyAccounting";
+
+const CertificatesAndDebts = lazy(() => import("./components/CertificatesAndDebts"));
+const ServiceCalculator = lazy(() => import("./components/ServiceCalculator"));
+const Solarium = lazy(() => import("./components/Solarium"));
+const MasterSalaries = lazy(() => import("./components/MasterSalaries"));
+const AdminSalaries = lazy(() => import("./components/AdminSalaries"));
+const OwnerSection = lazy(() => import("./components/OwnerSection"));
+const OwnerPasswordPrompt = lazy(() => import("./components/OwnerPasswordPrompt"));
+const InteractiveHelp = lazy(() => import("./components/InteractiveHelp"));
+
+const APP_VERSION = "1.2.0";
+
+function TabFallback() {
+  return (
+    <div className="flex items-center justify-center py-16 text-slate-400 text-xs font-mono uppercase tracking-wider">
+      Загрузка…
+    </div>
+  );
+}
 
 export default function App() {
-  // Navigation active state
-  const [activeTab, setActiveTab] = useState<string>("accounting");
+  const { state, patch, setMaterialPackaging, importBackup, resetApp, buildBackupPayload } = useAppStore();
+  const { preferences, setPreference } = useStorePreferences();
+  const { meta, setMeta } = useStoreMeta();
 
-  // Real-time Header Clock
-  const [timeStr, setTimeStr] = useState<string>("");
-  const [dateStr, setDateStr] = useState<string>("");
+  const [activeTab, setActiveTab] = useState("accounting");
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(["accounting"]));
+  const [isOwnerUnlocked, setIsOwnerUnlocked] = useState(false);
+  const [importPreview, setImportPreview] = useState<ReturnType<typeof validateBackupImport> | null>(null);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+
+  const getTodayDateString = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  };
+  const [selectedDateUi, setSelectedDateUi] = useState(getTodayDateString);
+
+  const [timeStr, setTimeStr] = useState("");
+  const [dateStr, setDateStr] = useState("");
+  const [lastActivity, setLastActivity] = useState(Date.now());
+
+  const backupPayloadRef = useRef(buildBackupPayload);
+  backupPayloadRef.current = buildBackupPayload;
+
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -77,588 +76,191 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Mark app as initialized after first launch (no pre-filled data on first run)
   useEffect(() => {
-    localStorage.setItem("eva_style_app_initialized", "1");
-  }, []);
+    setMountedTabs((prev) => new Set(prev).add(activeTab));
+  }, [activeTab]);
 
-  // Selected date synchronized globally (defaults to current date, matching timezone)
-  const getTodayDateString = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
-
-  // --- CORE SYSTEM STATES WITH LOCAL STORAGE RECOVERY ---
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    const saved = localStorage.getItem("eva_style_employees");
-    if (saved) return JSON.parse(saved);
-    const initialized = localStorage.getItem("eva_style_app_initialized");
-    return initialized ? INITIAL_EMPLOYEES : [];
-  });
-
-  const [visits, setVisits] = useState<Visit[]>(() => {
-    const saved = localStorage.getItem("eva_style_visits");
-    return saved ? JSON.parse(saved) : INITIAL_VISITS;
-  });
-
-  const [solariumSessions, setSolariumSessions] = useState<SolariumSession[]>(() => {
-    const saved = localStorage.getItem("eva_style_solarium_sessions");
-    return saved ? JSON.parse(saved) : INITIAL_SOLARIUM_SESSIONS;
-  });
-
-  const [extraTransactions, setExtraTransactions] = useState<ExtraTransaction[]>(() => {
-    const saved = localStorage.getItem("eva_style_extra_transactions");
-    return saved ? JSON.parse(saved) : INITIAL_EXTRA_TRANSACTIONS;
-  });
-
-  const [masterTransactions, setMasterTransactions] = useState<MasterTransaction[]>(() => {
-    const saved = localStorage.getItem("eva_style_master_transactions");
-    return saved ? JSON.parse(saved) : INITIAL_MASTER_TRANSACTIONS;
-  });
-
-  const [adminShifts, setAdminShifts] = useState<AdminShift[]>(() => {
-    const saved = localStorage.getItem("eva_style_admin_shifts");
-    return saved ? JSON.parse(saved) : INITIAL_ADMIN_SHIFTS;
-  });
-
-  const [dailyCash, setDailyCash] = useState<DailyCashState[]>(() => {
-    const saved = localStorage.getItem("eva_style_daily_cash");
-    return saved ? JSON.parse(saved) : INITIAL_DAILY_CASH;
-  });
-
-  const [giftCertificates, setGiftCertificates] = useState<GiftCertificate[]>(() => {
-    const saved = localStorage.getItem("eva_style_gift_certificates");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [debtRecords, setDebtRecords] = useState<DebtRecord[]>(() => {
-    const saved = localStorage.getItem("eva_style_debt_records");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [settingsRules, setSettingsRules] = useState<SettingsRule[]>(() => {
-    const saved = localStorage.getItem("eva_style_settings_rules");
-    return saved ? JSON.parse(saved) : INITIAL_SETTINGS_RULES;
-  });
-
-  const [materialPrices, setMaterialPrices] = useState<RawMaterialPrices>(() => {
-    const saved = localStorage.getItem("eva_style_material_prices");
-    return saved ? JSON.parse(saved) : INITIAL_RAW_MATERIAL_PRICES;
-  });
-
-  const [materialPackaging, setMaterialPackaging] = useState<Record<string, { price: number; volume: number }>>(() => {
-    const saved = localStorage.getItem("eva_style_material_packaging");
-    if (saved) return JSON.parse(saved);
-    return INITIAL_MATERIAL_PACKAGING;
-  });
-
-  const [materialConsumptions, setMaterialConsumptions] = useState(() => {
-    const saved = localStorage.getItem("eva_style_material_consumptions");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        let modified = false;
-        if (parsed.lamination && parsed.lamination.короткие && (parsed.lamination.короткие.baseCost === undefined || parsed.lamination.короткие.constant > 200)) {
-          parsed.lamination.короткие.baseCost = 1000;
-          parsed.lamination.короткие.constant = 105;
-          parsed.lamination.средние.baseCost = 1300;
-          parsed.lamination.средние.constant = 125;
-          parsed.lamination.удлиненные.baseCost = 1500;
-          parsed.lamination.удлиненные.constant = 150;
-          parsed.lamination.длинные.baseCost = 1800;
-          parsed.lamination.длинные.constant = 150;
-          modified = true;
-        }
-        if (parsed.biocurl && parsed.biocurl.короткие && (parsed.biocurl.короткие.baseCost === undefined || parsed.biocurl.короткие.constant > 200)) {
-          parsed.biocurl.короткие.baseCost = 1000;
-          parsed.biocurl.короткие.constant = 100;
-          parsed.biocurl.средние.baseCost = 1200;
-          parsed.biocurl.средние.constant = 120;
-          parsed.biocurl.удлиненные.baseCost = 1400;
-          parsed.biocurl.удлиненные.constant = 140;
-          parsed.biocurl.длинные.baseCost = 1600;
-          parsed.biocurl.длинные.constant = 150;
-          modified = true;
-        }
-        if (parsed.biocurl && !parsed.biocurl["частичная"]) {
-          parsed.biocurl["частичная"] = { shampoo: 5, base: 4, lotionOne: 10, lotionTwo: 10, cond: 10, serum: 8, constant: 80, baseCost: 800 };
-          modified = true;
-        }
-        if (modified) {
-          localStorage.setItem("eva_style_material_consumptions", JSON.stringify(parsed));
-        }
-        return parsed;
-      } catch (e) {
-        console.error("Error migrating material consumptions", e);
-      }
+  useEffect(() => {
+    if (meta.seenAppVersion !== APP_VERSION) {
+      const entry = getChangelogForVersion(APP_VERSION);
+      if (entry) setShowWhatsNew(true);
     }
+  }, [meta.seenAppVersion]);
 
-    // Excel default lamination values from screenshot & sensible biocurl defaults
-    return INITIAL_MATERIAL_CONSUMPTIONS;
-  });
-
-  const [adminDaysRates, setAdminDaysRates] = useState<AdminDayOfWeekRate>(() => {
-    const saved = localStorage.getItem("eva_style_admin_days_rates");
-    return saved ? JSON.parse(saved) : INITIAL_ADMIN_DAYS_RATES;
-  });
-
-  const [adminDaysRatesRules, setAdminDaysRatesRules] = useState<AdminDaysRateRule[]>(() => {
-    const saved = localStorage.getItem("eva_style_admin_days_rates_rules");
-    if (saved) return JSON.parse(saved);
-    return INITIAL_ADMIN_DAYS_RATES_RULES;
-  });
-
-  const [showDeletedVisits, setShowDeletedVisits] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_show_deleted_visits");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [allowDeleteVisits, setAllowDeleteVisits] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_allow_delete_visits");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [allowDeleteCertificates, setAllowDeleteCertificates] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_allow_delete_certificates");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [showVisitChangeHistory, setShowVisitChangeHistory] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_show_visit_change_history");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [allowMasterPayouts, setAllowMasterPayouts] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_allow_master_payouts");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [allowAdminShiftEdits, setAllowAdminShiftEdits] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_allow_admin_shift_edits");
-    return saved ? JSON.parse(saved) : true;
-  });
-
-  const [hideFormulaCalculations, setHideFormulaCalculations] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_hide_formula_calculations");
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  const [ownerPassword, setOwnerPassword] = useState<string>(() => {
-    return localStorage.getItem("eva_style_owner_password") || "";
-  });
-
-  const [isOwnerUnlocked, setIsOwnerUnlocked] = useState<boolean>(false);
-
-  const [keepOwnerUnlocked, setKeepOwnerUnlocked] = useState<boolean>(() => {
-    const saved = localStorage.getItem("eva_style_keep_owner_unlocked");
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  const [autoLockDuration, setAutoLockDuration] = useState<number>(() => {
-    const saved = localStorage.getItem("eva_style_auto_lock_duration");
-    return saved ? JSON.parse(saved) : 5; // default 5 minutes
-  });
-
-  const [adminPaidWages, setAdminPaidWages] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem("eva_style_admin_paid_wages");
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  // Track last activity timestamp (milliseconds) for the security idle auto-lock
-  const [lastActivity, setLastActivity] = useState<number>(Date.now());
-
-  // Listen to user interactions to reset lastActivity
   useEffect(() => {
-    if (!keepOwnerUnlocked || !ownerPassword || !isOwnerUnlocked) return;
+    if (activeTab !== "owner" && !preferences.keepOwnerUnlocked) {
+      setIsOwnerUnlocked(false);
+    }
+  }, [activeTab, preferences.keepOwnerUnlocked]);
 
-    const handleActivity = () => {
-      setLastActivity(Date.now());
-    };
-
+  useEffect(() => {
+    if (!preferences.keepOwnerUnlocked || !meta.ownerPassword || !isOwnerUnlocked) return;
+    const handleActivity = () => setLastActivity(Date.now());
     window.addEventListener("mousemove", handleActivity);
     window.addEventListener("keydown", handleActivity);
     window.addEventListener("mousedown", handleActivity);
     window.addEventListener("touchstart", handleActivity);
-
     return () => {
       window.removeEventListener("mousemove", handleActivity);
       window.removeEventListener("keydown", handleActivity);
       window.removeEventListener("mousedown", handleActivity);
       window.removeEventListener("touchstart", handleActivity);
     };
-  }, [keepOwnerUnlocked, ownerPassword, isOwnerUnlocked]);
+  }, [preferences.keepOwnerUnlocked, meta.ownerPassword, isOwnerUnlocked]);
 
-  // Lock automatically when inactive
   useEffect(() => {
-    if (!keepOwnerUnlocked || !ownerPassword || !isOwnerUnlocked) return;
-
+    if (!preferences.keepOwnerUnlocked || !meta.ownerPassword || !isOwnerUnlocked) return;
     const interval = setInterval(() => {
-      const elapsedMs = Date.now() - lastActivity;
-      const durationMs = autoLockDuration * 60 * 1000;
-      if (elapsedMs >= durationMs) {
+      if (Date.now() - lastActivity >= preferences.autoLockDuration * 60 * 1000) {
         setIsOwnerUnlocked(false);
       }
-    }, 2000); // Check every 2 seconds for responsive reaction
-
+    }, 2000);
     return () => clearInterval(interval);
-  }, [keepOwnerUnlocked, ownerPassword, isOwnerUnlocked, lastActivity, autoLockDuration]);
-
-  // --- SYNCHRONIZE BACK TO LOCAL STORAGE ON MUTATION ---
-  useEffect(() => {
-    localStorage.setItem("eva_style_employees", JSON.stringify(employees));
-  }, [employees]);
+  }, [preferences.keepOwnerUnlocked, meta.ownerPassword, isOwnerUnlocked, lastActivity, preferences.autoLockDuration]);
 
   useEffect(() => {
-    localStorage.setItem("eva_style_visits", JSON.stringify(visits));
-  }, [visits]);
+    if (!preferences.autoBackupEnabled) return;
+    const runAutoBackup = async () => {
+      const todayStr = getTodayDateString();
+      if (!shouldRunAutoBackup(preferences.autoBackupInterval, meta.lastAutoBackupDate, todayStr)) return;
+      const desktop = (window as { evaStyleDesktop?: { isDesktop?: boolean; autoSaveBackup?: (p: { fileName: string; content: string }) => Promise<{ success: boolean }> } }).evaStyleDesktop;
+      if (!desktop?.isDesktop || !desktop.autoSaveBackup) return;
+      const content = serializeBackup(backupPayloadRef.current());
+      const result = await desktop.autoSaveBackup({ fileName: `eva_style_auto_${todayStr}.json`, content });
+      if (result.success) setMeta({ lastAutoBackupDate: todayStr });
+    };
+    runAutoBackup();
+    const interval = setInterval(runAutoBackup, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [preferences.autoBackupEnabled, preferences.autoBackupInterval, meta.lastAutoBackupDate, setMeta]);
 
-  useEffect(() => {
-    localStorage.setItem("eva_style_solarium_sessions", JSON.stringify(solariumSessions));
-  }, [solariumSessions]);
+  const bindSetter = useCallback(
+    <K extends keyof typeof state>(key: K) =>
+      (value: (typeof state)[K] | ((prev: (typeof state)[K]) => (typeof state)[K])) => {
+        const next =
+          typeof value === "function"
+            ? (value as (prev: (typeof state)[K]) => (typeof state)[K])(state[key])
+            : value;
+        patch({ [key]: next } as AppStorePatch);
+      },
+    [patch, state]
+  );
 
-  useEffect(() => {
-    localStorage.setItem("eva_style_extra_transactions", JSON.stringify(extraTransactions));
-  }, [extraTransactions]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_master_transactions", JSON.stringify(masterTransactions));
-  }, [masterTransactions]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_admin_shifts", JSON.stringify(adminShifts));
-  }, [adminShifts]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_daily_cash", JSON.stringify(dailyCash));
-  }, [dailyCash]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_gift_certificates", JSON.stringify(giftCertificates));
-  }, [giftCertificates]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_debt_records", JSON.stringify(debtRecords));
-  }, [debtRecords]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_settings_rules", JSON.stringify(settingsRules));
-  }, [settingsRules]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_material_prices", JSON.stringify(materialPrices));
-  }, [materialPrices]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_material_packaging", JSON.stringify(materialPackaging));
-    // Calculate R/ml based on package price and package volume
-    setMaterialPrices({
-      shampooProscenia: materialPackaging.shampooProscenia.price / (materialPackaging.shampooProscenia.volume || 1),
-      lotionAcPretreatment: materialPackaging.lotionAcPretreatment.price / (materialPackaging.lotionAcPretreatment.volume || 1),
-      laminatingGel: materialPackaging.laminatingGel.price / (materialPackaging.laminatingGel.volume || 1),
-      maskProscenia: materialPackaging.maskProscenia.price / (materialPackaging.maskProscenia.volume || 1),
-      shampooProeditCurlFit: materialPackaging.shampooProeditCurlFit.price / (materialPackaging.shampooProeditCurlFit.volume || 1),
-      basePliaBase: materialPackaging.basePliaBase.price / (materialPackaging.basePliaBase.volume || 1),
-      lotionPliaStep1: materialPackaging.lotionPliaStep1.price / (materialPackaging.lotionPliaStep1.volume || 1),
-      lotionPliaStep2: materialPackaging.lotionPliaStep2.price / (materialPackaging.lotionPliaStep2.volume || 1),
-      conditionerPearl: materialPackaging.conditionerPearl.price / (materialPackaging.conditionerPearl.volume || 1),
-      serumAfterPerm: materialPackaging.serumAfterPerm.price / (materialPackaging.serumAfterPerm.volume || 1),
-    });
-  }, [materialPackaging]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_material_consumptions", JSON.stringify(materialConsumptions));
-  }, [materialConsumptions]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_admin_days_rates", JSON.stringify(adminDaysRates));
-  }, [adminDaysRates]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_admin_days_rates_rules", JSON.stringify(adminDaysRatesRules));
-  }, [adminDaysRatesRules]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_show_deleted_visits", JSON.stringify(showDeletedVisits));
-  }, [showDeletedVisits]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_allow_delete_visits", JSON.stringify(allowDeleteVisits));
-  }, [allowDeleteVisits]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_allow_delete_certificates", JSON.stringify(allowDeleteCertificates));
-  }, [allowDeleteCertificates]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_show_visit_change_history", JSON.stringify(showVisitChangeHistory));
-  }, [showVisitChangeHistory]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_allow_master_payouts", JSON.stringify(allowMasterPayouts));
-  }, [allowMasterPayouts]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_allow_admin_shift_edits", JSON.stringify(allowAdminShiftEdits));
-  }, [allowAdminShiftEdits]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_hide_formula_calculations", JSON.stringify(hideFormulaCalculations));
-  }, [hideFormulaCalculations]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_owner_password", ownerPassword);
-  }, [ownerPassword]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_keep_owner_unlocked", JSON.stringify(keepOwnerUnlocked));
-  }, [keepOwnerUnlocked]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_auto_lock_duration", JSON.stringify(autoLockDuration));
-  }, [autoLockDuration]);
-
-  useEffect(() => {
-    localStorage.setItem("eva_style_admin_paid_wages", JSON.stringify(adminPaidWages));
-  }, [adminPaidWages]);
-
-  useEffect(() => {
-    if (activeTab !== "owner" && !keepOwnerUnlocked) {
-      setIsOwnerUnlocked(false);
-    }
-  }, [activeTab, keepOwnerUnlocked]);
-
-
-  // Administrative Backup utility to let Owner export/import SQLite alternatives
   const handleResetApp = (mode: ResetAppMode) => {
-    const preserveTariffs = mode === "preserveTariffs";
-
-    setVisits(INITIAL_VISITS);
-    setSolariumSessions(INITIAL_SOLARIUM_SESSIONS);
-    setExtraTransactions(INITIAL_EXTRA_TRANSACTIONS);
-    setMasterTransactions(INITIAL_MASTER_TRANSACTIONS);
-    setAdminShifts(INITIAL_ADMIN_SHIFTS);
-    setDailyCash(INITIAL_DAILY_CASH);
-    setGiftCertificates([]);
-    setDebtRecords([]);
-    setSelectedDate(getTodayDateString());
-
-    persistToStorage("eva_style_visits", INITIAL_VISITS);
-    persistToStorage("eva_style_solarium_sessions", INITIAL_SOLARIUM_SESSIONS);
-    persistToStorage("eva_style_extra_transactions", INITIAL_EXTRA_TRANSACTIONS);
-    persistToStorage("eva_style_master_transactions", INITIAL_MASTER_TRANSACTIONS);
-    persistToStorage("eva_style_admin_shifts", INITIAL_ADMIN_SHIFTS);
-    persistToStorage("eva_style_daily_cash", INITIAL_DAILY_CASH);
-    persistToStorage("eva_style_gift_certificates", []);
-    persistToStorage("eva_style_debt_records", []);
-
-    setShowDeletedVisits(DEFAULT_APP_PREFERENCES.showDeletedVisits);
-    setAllowDeleteVisits(DEFAULT_APP_PREFERENCES.allowDeleteVisits);
-    setAllowDeleteCertificates(DEFAULT_APP_PREFERENCES.allowDeleteCertificates);
-    setShowVisitChangeHistory(DEFAULT_APP_PREFERENCES.showVisitChangeHistory);
-    setAllowMasterPayouts(DEFAULT_APP_PREFERENCES.allowMasterPayouts);
-    setAllowAdminShiftEdits(DEFAULT_APP_PREFERENCES.allowAdminShiftEdits);
-    setHideFormulaCalculations(DEFAULT_APP_PREFERENCES.hideFormulaCalculations);
-    setKeepOwnerUnlocked(DEFAULT_APP_PREFERENCES.keepOwnerUnlocked);
-    setAutoLockDuration(DEFAULT_APP_PREFERENCES.autoLockDuration);
-
-    persistToStorage("eva_style_show_deleted_visits", DEFAULT_APP_PREFERENCES.showDeletedVisits);
-    persistToStorage("eva_style_allow_delete_visits", DEFAULT_APP_PREFERENCES.allowDeleteVisits);
-    persistToStorage("eva_style_allow_delete_certificates", DEFAULT_APP_PREFERENCES.allowDeleteCertificates);
-    persistToStorage("eva_style_show_visit_change_history", DEFAULT_APP_PREFERENCES.showVisitChangeHistory);
-    persistToStorage("eva_style_allow_master_payouts", DEFAULT_APP_PREFERENCES.allowMasterPayouts);
-    persistToStorage("eva_style_allow_admin_shift_edits", DEFAULT_APP_PREFERENCES.allowAdminShiftEdits);
-    persistToStorage("eva_style_hide_formula_calculations", DEFAULT_APP_PREFERENCES.hideFormulaCalculations);
-    persistToStorage("eva_style_keep_owner_unlocked", DEFAULT_APP_PREFERENCES.keepOwnerUnlocked);
-    persistToStorage("eva_style_auto_lock_duration", DEFAULT_APP_PREFERENCES.autoLockDuration);
-
-    if (!preserveTariffs) {
-      setSettingsRules(INITIAL_SETTINGS_RULES);
-      setMaterialPackaging(INITIAL_MATERIAL_PACKAGING);
-      setMaterialConsumptions(INITIAL_MATERIAL_CONSUMPTIONS);
-      setAdminDaysRates(INITIAL_ADMIN_DAYS_RATES);
-      setAdminDaysRatesRules(INITIAL_ADMIN_DAYS_RATES_RULES);
-      setEmployees(INITIAL_EMPLOYEES);
-      setMaterialPrices(INITIAL_RAW_MATERIAL_PRICES);
-
-      persistToStorage("eva_style_settings_rules", INITIAL_SETTINGS_RULES);
-      persistToStorage("eva_style_material_packaging", INITIAL_MATERIAL_PACKAGING);
-      persistToStorage("eva_style_material_consumptions", INITIAL_MATERIAL_CONSUMPTIONS);
-      persistToStorage("eva_style_admin_days_rates", INITIAL_ADMIN_DAYS_RATES);
-      persistToStorage("eva_style_admin_days_rates_rules", INITIAL_ADMIN_DAYS_RATES_RULES);
-      persistToStorage("eva_style_employees", INITIAL_EMPLOYEES);
-      persistToStorage("eva_style_material_prices", INITIAL_RAW_MATERIAL_PRICES);
-    }
-
+    resetApp(mode);
+    setSelectedDateUi(getTodayDateString());
     alert(getResetSuccessMessage(mode));
   };
 
   const handleExportBackup = async () => {
-    const data = {
-      employees,
-      visits,
-      solariumSessions,
-      extraTransactions,
-      masterTransactions,
-      adminShifts,
-      dailyCash,
-      settingsRules,
-      materialPrices,
-      materialPackaging,
-      materialConsumptions,
-      adminDaysRates,
-      adminDaysRatesRules,
-      giftCertificates,
-      debtRecords,
-      adminPaidWages,
-      preferences: {
-        showDeletedVisits,
-        allowDeleteVisits,
-        allowDeleteCertificates,
-        showVisitChangeHistory,
-        allowMasterPayouts,
-        allowAdminShiftEdits,
-        hideFormulaCalculations,
-        keepOwnerUnlocked,
-        autoLockDuration,
-      },
-    };
-    const content = JSON.stringify(data, null, 2);
-    const fileName = `eva_style_export_${selectedDate}.json`;
-
-    const desktop = (window as any).evaStyleDesktop;
+    const content = serializeBackup(buildBackupPayload());
+    const fileName = `eva_style_export_${selectedDateUi}.json`;
+    const desktop = (window as { evaStyleDesktop?: { isDesktop?: boolean; saveBackup?: (p: { fileName: string; content: string }) => Promise<{ success: boolean }> } }).evaStyleDesktop;
     if (desktop?.isDesktop && desktop.saveBackup) {
-      const result = await desktop.saveBackup({ fileName, content });
-      return result.success;
+      await desktop.saveBackup({ fileName, content });
     } else {
-      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(content)}`;
-      const downloadAnchor = document.createElement("a");
-      downloadAnchor.setAttribute("href", jsonString);
-      downloadAnchor.setAttribute("download", fileName);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      return true;
+      const a = document.createElement("a");
+      a.href = `data:text/json;charset=utf-8,${encodeURIComponent(content)}`;
+      a.download = fileName;
+      a.click();
     }
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (e.target.files && e.target.files[0]) {
-      fileReader.readAsText(e.target.files[0], "UTF-8");
-      fileReader.onload = (event) => {
-        try {
-          const parsed = JSON.parse(event.target?.result as string);
-          if (parsed.employees) setEmployees(parsed.employees);
-          if (parsed.visits) setVisits(parsed.visits);
-          if (parsed.solariumSessions) setSolariumSessions(parsed.solariumSessions);
-          if (parsed.extraTransactions) setExtraTransactions(parsed.extraTransactions);
-          if (parsed.masterTransactions) setMasterTransactions(parsed.masterTransactions);
-          if (parsed.adminShifts) setAdminShifts(parsed.adminShifts);
-          if (parsed.dailyCash) setDailyCash(parsed.dailyCash);
-          if (parsed.settingsRules) setSettingsRules(parsed.settingsRules);
-          if (parsed.materialPrices) setMaterialPrices(parsed.materialPrices);
-          if (parsed.materialPackaging) setMaterialPackaging(parsed.materialPackaging);
-          if (parsed.materialConsumptions) setMaterialConsumptions(parsed.materialConsumptions);
-          if (parsed.adminDaysRates) setAdminDaysRates(parsed.adminDaysRates);
-          if (parsed.adminDaysRatesRules) setAdminDaysRatesRules(parsed.adminDaysRatesRules);
-          if (parsed.giftCertificates) setGiftCertificates(parsed.giftCertificates);
-          if (parsed.debtRecords) setDebtRecords(parsed.debtRecords);
-          if (parsed.adminPaidWages) setAdminPaidWages(parsed.adminPaidWages);
-          if (parsed.preferences) {
-            const p = parsed.preferences;
-            if (p.showDeletedVisits !== undefined) setShowDeletedVisits(p.showDeletedVisits);
-            if (p.allowDeleteVisits !== undefined) setAllowDeleteVisits(p.allowDeleteVisits);
-            if (p.allowDeleteCertificates !== undefined) setAllowDeleteCertificates(p.allowDeleteCertificates);
-            if (p.showVisitChangeHistory !== undefined) setShowVisitChangeHistory(p.showVisitChangeHistory);
-            if (p.allowMasterPayouts !== undefined) setAllowMasterPayouts(p.allowMasterPayouts);
-            if (p.allowAdminShiftEdits !== undefined) setAllowAdminShiftEdits(p.allowAdminShiftEdits);
-            if (p.hideFormulaCalculations !== undefined) setHideFormulaCalculations(p.hideFormulaCalculations);
-            if (p.keepOwnerUnlocked !== undefined) setKeepOwnerUnlocked(p.keepOwnerUnlocked);
-            if (p.autoLockDuration !== undefined) setAutoLockDuration(p.autoLockDuration);
-          }
-          alert("Локальная резервная копия успешно восстановлена!");
-        } catch (err) {
-          alert("Неверный формат резервного файла!");
-        }
-      };
-    }
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        setImportPreview(validateBackupImport(parsed));
+      } catch {
+        setImportPreview({
+          valid: false,
+          errors: ["Неверный формат JSON"],
+          warnings: [],
+          preview: null,
+          payload: null,
+        });
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
   };
+
+  const changelogEntry = getChangelogForVersion(APP_VERSION);
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800" id="eva_style_root">
       <WelcomeOverlay />
+      {showWhatsNew && changelogEntry && (
+        <WhatsNewModal
+          entry={changelogEntry}
+          onDismiss={() => {
+            setMeta({ seenAppVersion: APP_VERSION });
+            setShowWhatsNew(false);
+          }}
+        />
+      )}
+      {importPreview && (
+        <ImportPreviewModal
+          result={importPreview}
+          onCancel={() => setImportPreview(null)}
+          onConfirm={() => {
+            if (importPreview.payload) importBackup(importPreview.payload);
+            setImportPreview(null);
+            alert("Локальная резервная копия успешно восстановлена!");
+          }}
+        />
+      )}
 
-      {/* Top High Density Administrative Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm" id="app-header-bar">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
-          
-          {/* Logo & Brand Indicator */}
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-rose-50 border border-rose-100 rounded flex items-center justify-center text-rose-600 transition-transform">
+            <div className="h-8 w-8 bg-rose-50 border border-rose-100 rounded flex items-center justify-center text-rose-600">
               <Heart className="h-4 w-4 fill-rose-600 text-rose-600" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-slate-900 tracking-tight font-sans leading-none">Ева-стиль</h1>
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-none">Ева-стиль</h1>
               <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase mt-0.5">Учетный пульт</p>
             </div>
           </div>
-
-          {/* Connection Status Badge & Actions */}
           <div className="flex items-center gap-3">
             {timeStr && (
-              <div 
-                className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100/70 text-slate-700 text-xs py-1 px-2.5 rounded font-mono font-bold leading-none flex items-center gap-1.5"
-                id="header-clock-display"
-              >
+              <div className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100/70 text-slate-700 text-xs py-1 px-2.5 rounded font-mono font-bold" id="header-clock-display">
                 <Clock className="h-3.5 w-3.5 text-rose-500" />
                 <span>{dateStr} {timeStr}</span>
               </div>
             )}
-
-            <div 
-              className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 text-[10px] py-1 px-2.5 rounded font-mono font-bold uppercase tracking-wider"
-              id="db-status-indicator"
-            >
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 text-[10px] py-1 px-2.5 rounded font-mono font-bold uppercase tracking-wider" id="db-status-indicator">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500" />
               </span>
-              Локальная БД: On
+              Store v{state.schemaVersion}
             </div>
-
-            {/* Quick backup actions */}
             <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
-              <button
-                onClick={handleExportBackup}
-                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 transition-colors"
-                title="Экспорт резервной копии"
-              >
+              <GlobalSearch
+                visits={state.visits}
+                giftCertificates={state.giftCertificates}
+                debtRecords={state.debtRecords}
+                onSelectVisit={(date) => { setSelectedDateUi(date); setActiveTab("accounting"); }}
+                onSelectCertificate={() => setActiveTab("certificates")}
+                onSelectDebt={() => setActiveTab("certificates")}
+              />
+              <button onClick={handleExportBackup} className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50" title="Экспорт резервной копии">
                 <Download className="h-3.5 w-3.5" />
               </button>
-              <label 
-                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 transition-colors cursor-pointer"
-                title="Импорт резервной копии"
-              >
+              <label className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 cursor-pointer" title="Импорт резервной копии">
                 <Upload className="h-3.5 w-3.5" />
-                <input 
-                  type="file" 
-                  accept=".json" 
-                  onChange={handleImportBackup} 
-                  className="hidden" 
-                />
+                <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
               </label>
             </div>
           </div>
         </div>
-
-        {/* Tab Headers Navigation Drawer */}
         <div className="bg-slate-50 border-t border-slate-200" id="tabs-navigation-panel">
           <div className="max-w-7xl mx-auto px-3">
-            <nav className="flex space-x-1 py-1 overflow-x-auto scrollbar-none" aria-label="Tabs">
+            <nav className="flex space-x-1 py-1 overflow-x-auto scrollbar-none">
               {[
                 { id: "accounting", name: "Учет за день" },
                 { id: "certificates", name: "Сертификаты" },
@@ -673,9 +275,7 @@ export default function App() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`whitespace-nowrap rounded py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                    activeTab === tab.id
-                      ? "bg-rose-50 text-rose-700 border border-rose-200 shadow-xs"
-                      : "text-slate-500 border border-transparent hover:text-slate-800 hover:bg-slate-200/50"
+                    activeTab === tab.id ? "bg-rose-50 text-rose-700 border border-rose-200 shadow-xs" : "text-slate-500 border border-transparent hover:text-slate-800 hover:bg-slate-200/50"
                   }`}
                   id={`tab-btn-${tab.id}`}
                 >
@@ -687,161 +287,197 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container Viewport — вкладки остаются смонтированными, чтобы не сбрасывать ввод */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-3" id="view-viewport">
-        <div className={activeTab === "accounting" ? "" : "hidden"} aria-hidden={activeTab !== "accounting"}>
-          <DailyAccounting
-            employees={employees}
-            visits={visits}
-            setVisits={setVisits}
-            solariumSessions={solariumSessions}
-            extraTransactions={extraTransactions}
-            setExtraTransactions={setExtraTransactions}
-            dailyCash={dailyCash}
-            setDailyCash={setDailyCash}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            settingsRules={settingsRules}
-            masterTransactions={masterTransactions}
-            giftCertificates={giftCertificates}
-            setGiftCertificates={setGiftCertificates}
-            debtRecords={debtRecords}
-            setDebtRecords={setDebtRecords}
-            showDeletedVisits={showDeletedVisits}
-            allowDeleteVisits={allowDeleteVisits}
-            showVisitChangeHistory={showVisitChangeHistory}
-          />
-        </div>
-
-        <div className={activeTab === "certificates" ? "" : "hidden"} aria-hidden={activeTab !== "certificates"}>
-          <CertificatesAndDebts
-            giftCertificates={giftCertificates}
-            setGiftCertificates={setGiftCertificates}
-            debtRecords={debtRecords}
-            setDebtRecords={setDebtRecords}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            allowDeleteCertificates={allowDeleteCertificates}
-          />
-        </div>
-
-        <div className={activeTab === "calculator" ? "" : "hidden"} aria-hidden={activeTab !== "calculator"}>
-          <ServiceCalculator
-            materialPrices={materialPrices}
-            materialConsumptions={materialConsumptions}
-            hideFormulaCalculations={hideFormulaCalculations}
-          />
-        </div>
-
-        <div className={activeTab === "solarium" ? "" : "hidden"} aria-hidden={activeTab !== "solarium"}>
-          <Solarium
-            solariumSessions={solariumSessions}
-            setSolariumSessions={setSolariumSessions}
-            settingsRules={settingsRules}
-            selectedDate={selectedDate}
-          />
-        </div>
-
-        <div className={activeTab === "salaries" ? "" : "hidden"} aria-hidden={activeTab !== "salaries"}>
-          <MasterSalaries
-            employees={employees}
-            visits={visits}
-            masterTransactions={masterTransactions}
-            setMasterTransactions={setMasterTransactions}
-            selectedDate={selectedDate}
-            adminShifts={adminShifts}
-            allowPayouts={allowMasterPayouts}
-          />
-        </div>
-
-        <div className={activeTab === "adminShifts" ? "" : "hidden"} aria-hidden={activeTab !== "adminShifts"}>
-          <AdminSalaries
-            employees={employees}
-            adminShifts={adminShifts}
-            setAdminShifts={setAdminShifts}
-            adminDaysRates={adminDaysRates}
-            adminDaysRatesRules={adminDaysRatesRules}
-            selectedDate={selectedDate}
-            allowAdminShiftEdits={allowAdminShiftEdits}
-            adminPaidWages={adminPaidWages}
-            setAdminPaidWages={setAdminPaidWages}
-          />
-        </div>
-
-        <div className={activeTab === "owner" ? "" : "hidden"} aria-hidden={activeTab !== "owner"}>
-          {ownerPassword && !isOwnerUnlocked ? (
-            <OwnerPasswordPrompt
-              correctPasswordHash={ownerPassword}
-              onUnlock={() => setIsOwnerUnlocked(true)}
-              onResetSuccess={() => {
-                setOwnerPassword("");
-                setIsOwnerUnlocked(true);
-              }}
+        {mountedTabs.has("accounting") && (
+          <div className={activeTab === "accounting" ? "" : "hidden"} aria-hidden={activeTab !== "accounting"}>
+            <DailyAccounting
+              employees={state.employees}
+              visits={state.visits}
+              setVisits={bindSetter("visits")}
+              solariumSessions={state.solariumSessions}
+              extraTransactions={state.extraTransactions}
+              setExtraTransactions={bindSetter("extraTransactions")}
+              dailyCash={state.dailyCash}
+              setDailyCash={bindSetter("dailyCash")}
+              selectedDate={selectedDateUi}
+              setSelectedDate={setSelectedDateUi}
+              settingsRules={state.settingsRules}
+              masterTransactions={state.masterTransactions}
+              giftCertificates={state.giftCertificates}
+              setGiftCertificates={bindSetter("giftCertificates")}
+              debtRecords={state.debtRecords}
+              setDebtRecords={bindSetter("debtRecords")}
+              showDeletedVisits={preferences.showDeletedVisits}
+              allowDeleteVisits={preferences.allowDeleteVisits}
+              showVisitChangeHistory={preferences.showVisitChangeHistory}
             />
-          ) : (
-            <OwnerSection
-              employees={employees}
-              setEmployees={setEmployees}
-              settingsRules={settingsRules}
-              setSettingsRules={setSettingsRules}
-              materialPrices={materialPrices}
-              setMaterialPrices={setMaterialPrices}
-              materialPackaging={materialPackaging}
-              setMaterialPackaging={setMaterialPackaging}
-              materialConsumptions={materialConsumptions}
-              setMaterialConsumptions={setMaterialConsumptions}
-              adminDaysRates={adminDaysRates}
-              setAdminDaysRates={setAdminDaysRates}
-              adminDaysRatesRules={adminDaysRatesRules}
-              setAdminDaysRatesRules={setAdminDaysRatesRules}
-              extraTransactions={extraTransactions}
-              setExtraTransactions={setExtraTransactions}
-              visits={visits}
-              solariumSessions={solariumSessions}
-              adminShifts={adminShifts}
-              masterTransactions={masterTransactions}
-              activeSettingsIdx={0}
-              showDeletedVisits={showDeletedVisits}
-              setShowDeletedVisits={setShowDeletedVisits}
-              allowDeleteVisits={allowDeleteVisits}
-              setAllowDeleteVisits={setAllowDeleteVisits}
-              allowDeleteCertificates={allowDeleteCertificates}
-              setAllowDeleteCertificates={setAllowDeleteCertificates}
-              showVisitChangeHistory={showVisitChangeHistory}
-              setShowVisitChangeHistory={setShowVisitChangeHistory}
-              allowMasterPayouts={allowMasterPayouts}
-              setAllowMasterPayouts={setAllowMasterPayouts}
-              allowAdminShiftEdits={allowAdminShiftEdits}
-              setAllowAdminShiftEdits={setAllowAdminShiftEdits}
-              hideFormulaCalculations={hideFormulaCalculations}
-              setHideFormulaCalculations={setHideFormulaCalculations}
-              ownerPassword={ownerPassword}
-              setOwnerPassword={setOwnerPassword}
-              keepOwnerUnlocked={keepOwnerUnlocked}
-              setKeepOwnerUnlocked={setKeepOwnerUnlocked}
-              autoLockDuration={autoLockDuration}
-              setAutoLockDuration={setAutoLockDuration}
-              onLock={() => setIsOwnerUnlocked(false)}
-              onResetApp={handleResetApp}
-            />
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className={activeTab === "help" ? "" : "hidden"} aria-hidden={activeTab !== "help"}>
-          <InteractiveHelp />
-        </div>
+        {mountedTabs.has("certificates") && (
+          <div className={activeTab === "certificates" ? "" : "hidden"} aria-hidden={activeTab !== "certificates"}>
+            <Suspense fallback={<TabFallback />}>
+              <CertificatesAndDebts
+                giftCertificates={state.giftCertificates}
+                setGiftCertificates={bindSetter("giftCertificates")}
+                debtRecords={state.debtRecords}
+                setDebtRecords={bindSetter("debtRecords")}
+                selectedDate={selectedDateUi}
+                setSelectedDate={setSelectedDateUi}
+                allowDeleteCertificates={preferences.allowDeleteCertificates}
+                settingsRules={state.settingsRules}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("calculator") && (
+          <div className={activeTab === "calculator" ? "" : "hidden"} aria-hidden={activeTab !== "calculator"}>
+            <Suspense fallback={<TabFallback />}>
+              <ServiceCalculator
+                materialPrices={state.materialPrices}
+                materialConsumptions={state.materialConsumptions}
+                hideFormulaCalculations={preferences.hideFormulaCalculations}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("solarium") && (
+          <div className={activeTab === "solarium" ? "" : "hidden"} aria-hidden={activeTab !== "solarium"}>
+            <Suspense fallback={<TabFallback />}>
+              <Solarium
+                solariumSessions={state.solariumSessions}
+                setSolariumSessions={bindSetter("solariumSessions")}
+                settingsRules={state.settingsRules}
+                selectedDate={selectedDateUi}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("salaries") && (
+          <div className={activeTab === "salaries" ? "" : "hidden"} aria-hidden={activeTab !== "salaries"}>
+            <Suspense fallback={<TabFallback />}>
+              <MasterSalaries
+                employees={state.employees}
+                visits={state.visits}
+                masterTransactions={state.masterTransactions}
+                setMasterTransactions={bindSetter("masterTransactions")}
+                selectedDate={selectedDateUi}
+                adminShifts={state.adminShifts}
+                allowPayouts={preferences.allowMasterPayouts}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("adminShifts") && (
+          <div className={activeTab === "adminShifts" ? "" : "hidden"} aria-hidden={activeTab !== "adminShifts"}>
+            <Suspense fallback={<TabFallback />}>
+              <AdminSalaries
+                employees={state.employees}
+                adminShifts={state.adminShifts}
+                setAdminShifts={bindSetter("adminShifts")}
+                adminDaysRates={state.adminDaysRates}
+                adminDaysRatesRules={state.adminDaysRatesRules}
+                selectedDate={selectedDateUi}
+                allowAdminShiftEdits={preferences.allowAdminShiftEdits}
+                adminPaidWages={state.adminPaidWages}
+                setAdminPaidWages={bindSetter("adminPaidWages")}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("owner") && (
+          <div className={activeTab === "owner" ? "" : "hidden"} aria-hidden={activeTab !== "owner"}>
+            <Suspense fallback={<TabFallback />}>
+              {meta.ownerPassword && !isOwnerUnlocked ? (
+                <OwnerPasswordPrompt
+                  correctPasswordHash={meta.ownerPassword}
+                  onUnlock={() => setIsOwnerUnlocked(true)}
+                  onResetSuccess={() => {
+                    setMeta({ ownerPassword: "" });
+                    setIsOwnerUnlocked(true);
+                  }}
+                />
+              ) : (
+                <OwnerSection
+                  employees={state.employees}
+                  setEmployees={bindSetter("employees")}
+                  settingsRules={state.settingsRules}
+                  setSettingsRules={bindSetter("settingsRules")}
+                  materialPrices={state.materialPrices}
+                  setMaterialPrices={bindSetter("materialPrices")}
+                  materialPackaging={state.materialPackaging}
+                  setMaterialPackaging={(v) => {
+                    if (typeof v === "function") {
+                      setMaterialPackaging(v(state.materialPackaging));
+                    } else {
+                      setMaterialPackaging(v);
+                    }
+                  }}
+                  materialConsumptions={state.materialConsumptions}
+                  setMaterialConsumptions={bindSetter("materialConsumptions")}
+                  adminDaysRates={state.adminDaysRates}
+                  setAdminDaysRates={bindSetter("adminDaysRates")}
+                  adminDaysRatesRules={state.adminDaysRatesRules}
+                  setAdminDaysRatesRules={bindSetter("adminDaysRatesRules")}
+                  extraTransactions={state.extraTransactions}
+                  setExtraTransactions={bindSetter("extraTransactions")}
+                  visits={state.visits}
+                  solariumSessions={state.solariumSessions}
+                  adminShifts={state.adminShifts}
+                  masterTransactions={state.masterTransactions}
+                  giftCertificates={state.giftCertificates}
+                  debtRecords={state.debtRecords}
+                  activeSettingsIdx={0}
+                  showDeletedVisits={preferences.showDeletedVisits}
+                  setShowDeletedVisits={(v) => setPreference("showDeletedVisits", v)}
+                  allowDeleteVisits={preferences.allowDeleteVisits}
+                  setAllowDeleteVisits={(v) => setPreference("allowDeleteVisits", v)}
+                  allowDeleteCertificates={preferences.allowDeleteCertificates}
+                  setAllowDeleteCertificates={(v) => setPreference("allowDeleteCertificates", v)}
+                  showVisitChangeHistory={preferences.showVisitChangeHistory}
+                  setShowVisitChangeHistory={(v) => setPreference("showVisitChangeHistory", v)}
+                  allowMasterPayouts={preferences.allowMasterPayouts}
+                  setAllowMasterPayouts={(v) => setPreference("allowMasterPayouts", v)}
+                  allowAdminShiftEdits={preferences.allowAdminShiftEdits}
+                  setAllowAdminShiftEdits={(v) => setPreference("allowAdminShiftEdits", v)}
+                  hideFormulaCalculations={preferences.hideFormulaCalculations}
+                  setHideFormulaCalculations={(v) => setPreference("hideFormulaCalculations", v)}
+                  ownerPassword={meta.ownerPassword}
+                  setOwnerPassword={(v) => setMeta({ ownerPassword: v })}
+                  keepOwnerUnlocked={preferences.keepOwnerUnlocked}
+                  setKeepOwnerUnlocked={(v) => setPreference("keepOwnerUnlocked", v)}
+                  autoLockDuration={preferences.autoLockDuration}
+                  setAutoLockDuration={(v) => setPreference("autoLockDuration", v)}
+                  autoBackupEnabled={preferences.autoBackupEnabled}
+                  setAutoBackupEnabled={(v) => setPreference("autoBackupEnabled", v)}
+                  autoBackupInterval={preferences.autoBackupInterval}
+                  setAutoBackupInterval={(v) => setPreference("autoBackupInterval", v)}
+                  lastAutoBackupDate={meta.lastAutoBackupDate}
+                  onLock={() => setIsOwnerUnlocked(false)}
+                  onResetApp={handleResetApp}
+                />
+              )}
+            </Suspense>
+          </div>
+        )}
+
+        {mountedTabs.has("help") && (
+          <div className={activeTab === "help" ? "" : "hidden"} aria-hidden={activeTab !== "help"}>
+            <Suspense fallback={<TabFallback />}>
+              <InteractiveHelp />
+            </Suspense>
+          </div>
+        )}
       </main>
 
-      {/* High Density Status Footer */}
-      <footer className="bg-slate-200 border-t border-slate-300 py-1.5 px-3 flex flex-wrap items-center justify-between text-[10px] font-mono font-medium text-slate-500 shrink-0 select-none uppercase tracking-wider" id="app-footer">
-        <div className="flex gap-4 items-center">
-          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Система: <span className="text-slate-800 font-bold">Online</span></span>
-          <span className="hidden sm:inline border-l border-slate-300 pl-4 text-slate-400">Связь: <span className="text-slate-700">ОК</span></span>
-          <span className="hidden md:inline border-l border-slate-300 pl-4 text-slate-400">Шифрование сессий: <span className="text-rose-700 font-bold">Активно</span></span>
-        </div>
-        <div className="text-[10px] text-slate-500 font-bold">
-          © 2026 Ева-стиль v1.1.1 · Windows
-        </div>
+      <footer className="bg-slate-200 border-t border-slate-300 py-1.5 px-3 flex flex-wrap items-center justify-between text-[10px] font-mono font-medium text-slate-500 shrink-0 uppercase tracking-wider" id="app-footer">
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />Система: <span className="text-slate-800 font-bold">Online</span></span>
+        <div className="text-[10px] text-slate-500 font-bold">© 2026 Ева-стиль v{APP_VERSION} · Windows</div>
       </footer>
     </div>
   );

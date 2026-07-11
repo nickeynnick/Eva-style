@@ -3,13 +3,16 @@ import {
   GiftCertificate,
   DebtRecord,
   ReceivingPaymentMethod,
+  SettingsRule,
 } from "../types";
 import {
   RECEIVING_PAYMENT_METHODS,
   isValidCertificateNumber,
   normalizeCertificateNumber,
   paymentMethodLabel,
+  calculateAcquiring,
 } from "../utils/paymentUtils";
+import { getActiveSettingsForDate } from "../utils/settingsUtils";
 import {
   Gift,
   Users,
@@ -28,6 +31,7 @@ interface CertificatesAndDebtsProps {
   selectedDate: string;
   setSelectedDate: (date: string) => void;
   allowDeleteCertificates?: boolean;
+  settingsRules: SettingsRule[];
 }
 
 export default function CertificatesAndDebts({
@@ -38,6 +42,7 @@ export default function CertificatesAndDebts({
   selectedDate,
   setSelectedDate,
   allowDeleteCertificates = false,
+  settingsRules,
 }: CertificatesAndDebtsProps) {
   const [certNominal, setCertNominal] = useState<number | "">("");
   const [certNumber, setCertNumber] = useState("");
@@ -180,6 +185,14 @@ export default function CertificatesAndDebts({
       date: payDate,
       amount,
       paymentMethod: payMethod,
+      acquiringCost:
+        payMethod === "дебетовая карта"
+          ? calculateAcquiring(
+              amount,
+              "дебетовая карта",
+              getActiveSettingsForDate(settingsRules, payDate).acquiringCommission
+            )
+          : undefined,
       comment: payComment || undefined,
     };
 

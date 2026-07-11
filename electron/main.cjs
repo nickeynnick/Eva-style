@@ -145,6 +145,14 @@ function setupIpc(mainWindow) {
     return { success: false };
   });
 
+  ipcMain.handle("auto-save-backup", async (_event, { fileName, content }) => {
+    const backupDir = path.join(app.getPath("documents"), "Ева-стиль", "Backups");
+    fs.mkdirSync(backupDir, { recursive: true });
+    const filePath = path.join(backupDir, fileName);
+    fs.writeFileSync(filePath, content, "utf-8");
+    return { success: true, path: filePath };
+  });
+
   ipcMain.handle("check-for-updates", async () => {
     if (isDev) return { status: "dev" };
     if (isPortable) return { status: "portable" };

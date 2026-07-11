@@ -6,6 +6,7 @@ import {
   Position,
   AdminShift
 } from "../types";
+import { calculateMasterShareForVisit } from "../utils/salaryUtils";
 import { 
   RussianRuble, 
   Plus, 
@@ -168,18 +169,7 @@ export default function MasterSalaries({
       // Standard beautician shift dates and commission share
       const distinctDates = Array.from(new Set(masterVisits.map(v => v.date)));
       shiftsCount = distinctDates.length;
-      shareAmount = masterVisits.reduce((sum, v) => {
-        let pctVal = master.percentage;
-        if (master.position === Position.Manicurist && master.manicuresPercentage) {
-          if (v.manicureType === "classical") {
-            pctVal = master.manicuresPercentage.classical;
-          } else if (v.manicureType === "apparatus") {
-            pctVal = master.manicuresPercentage.apparatus;
-          }
-        }
-        const pct = pctVal / 100;
-        return sum + (v.workCost * pct);
-      }, 0);
+      shareAmount = masterVisits.reduce((sum, v) => sum + calculateMasterShareForVisit(master, v), 0);
     }
 
     // 4. Master materials reimbursement

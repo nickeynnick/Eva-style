@@ -26,6 +26,11 @@ import {
   getSolariumSessionAcquiring,
   getSolariumSessionTotal,
 } from "../utils/settingsUtils";
+import {
+  getDebtPaymentAcquiringCost,
+  getDebtPaymentCardTotal,
+} from "../utils/dailyFinanceUtils";
+import { printShiftSummary } from "../utils/shiftSummary";
 import { 
   Calendar, 
   Plus, 
@@ -39,7 +44,8 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   Calculator,
-  Clock
+  Clock,
+  Printer,
 } from "lucide-react";
 
 interface DailyAccountingProps {
@@ -109,6 +115,9 @@ export default function DailyAccounting({
   const [editManicureType, setEditManicureType] = useState<"classical" | "apparatus">("classical");
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("наличные");
   const [editMasterId, setEditMasterId] = useState("");
+  const [editSelectedCertId, setEditSelectedCertId] = useState("");
+  const [editClientName, setEditClientName] = useState("");
+  const [editClientPhone, setEditClientPhone] = useState("");
 
   // Input cash form state
   const [startingCashInput, setStartingCashInput] = useState<number | "">("");
@@ -155,6 +164,17 @@ export default function DailyAccounting({
   const totalSolariumRevenue = solariumCashRevenue + solariumCardRevenue + solariumTransferRevenue;
 
   const activeCerts = giftCertificates.filter(c => c.isActive && c.balance > 0);
+
+  const getEditAvailableCerts = (visitId: string) => {
+    const visit = visits.find(v => v.id === visitId);
+    const base = giftCertificates.filter(c => c.isActive && c.balance > 0);
+    if (!visit?.giftCertificateId) return base;
+    const linked = giftCertificates.find(c => c.id === visit.giftCertificateId);
+    if (linked && !base.some(c => c.id === linked.id)) {
+      return [...base, linked];
+    }
+    return base;
+  };
 
   // Master performance and salaries calculation for this day
   const mastersPerfMap = new Map<string, {
@@ -375,6 +395,9 @@ export default function DailyAccounting({
     setEditMasterMaterialsCostInput(vMaster);
     setEditManicureType(visit.manicureType || "classical");
     setEditPaymentMethod(visit.paymentMethod);
+    setEditSelectedCertId(visit.giftCertificateId || "");
+    setEditClientName(visit.clientName || "");
+    setEditClientPhone(visit.clientPhone || "");
   };
 
   const handleSaveEditVisit = (visitId: string) => {
@@ -391,11 +414,11 @@ export default function DailyAccounting({
     const visitSettings = getActiveSettingsForDate(settingsRules, oldVisit.date);
 
     if (editPaymentMethod === "сертификат") {
-      const certId = oldVisit.giftCertificateId;
-      if (!certId) {
-        alert("Нельзя сменить способ оплаты на сертификат при редактировании. Создайте новый визит.");
+      if (!editSelectedCertId) {
+        alert("Выберите подарочный сертификат");
         return;
       }
+      const certId = editSelectedCertId;
       const cert = giftCertificates.find(c => c.id === certId);
       let availableBalance = cert?.balance ?? 0;
       if (
@@ -405,14 +428,14 @@ export default function DailyAccounting({
       ) {
         availableBalance += oldVisit.certificateAmountUsed;
       }
-      if (!cert || !cert.isActive || availableBalance < baseAmount) {
+      if (!cert || availableBalance < baseAmount) {
         alert(`Недостаточно средств на сертификате. Доступно: ${availableBalance} ₽, нужно: ${baseAmount} ₽`);
         return;
       }
     }
 
-    if (editPaymentMethod === "в долг" && !oldVisit.debtId && !oldVisit.clientName) {
-      alert("Нельзя сменить способ оплаты на «в долг» при редактировании без существующей записи долга.");
+    if (editPaymentMethod === "в долг" && !editClientName.trim()) {
+      alert("Укажите имя клиента для оформления долга");
       return;
     }
 
@@ -424,10 +447,14 @@ export default function DailyAccounting({
       closeDebtFromVisit(oldVisit);
     }
 
+    let resolvedDebtId = oldVisit.debtId;
+    let resolvedClientName = editClientName.trim();
+    let resolvedClientPhone = editClientPhone.trim() || undefined;
+
     // Применить новое списание сертификата
-    if (editPaymentMethod === "сертификат" && oldVisit.giftCertificateId) {
+    if (editPaymentMethod === "сертификат" && editSelectedCertId) {
       setGiftCertificates(prev => prev.map(c => {
-        if (c.id !== oldVisit.giftCertificateId) return c;
+        if (c.id !== editSelectedCertId) return c;
         const newBalance = Math.round((c.balance - baseAmount) * 100) / 100;
         return {
           ...c,
@@ -450,11 +477,28 @@ export default function DailyAccounting({
           const remaining = Math.max(0, Math.round((baseAmount - paid) * 100) / 100);
           return {
             ...d,
+            clientName: resolvedClientName,
+            clientPhone: resolvedClientPhone,
             originalAmount: baseAmount,
             remainingAmount: remaining,
             isClosed: remaining <= 0,
           };
         }));
+        resolvedDebtId = oldVisit.debtId;
+      } else {
+        resolvedDebtId = "debt-" + Date.now();
+        setDebtRecords(prev => [...prev, {
+          id: resolvedDebtId!,
+          clientName: resolvedClientName,
+          clientPhone: resolvedClientPhone,
+          visitId,
+          visitDate: oldVisit.date,
+          originalAmount: baseAmount,
+          remainingAmount: baseAmount,
+          createdDate: oldVisit.date,
+          payments: [],
+          isClosed: false,
+        }]);
       }
     }
 
@@ -507,11 +551,11 @@ export default function DailyAccounting({
         paymentMethod: editPaymentMethod,
         acquiringCost: acq,
         totalCost: total,
-        giftCertificateId: editPaymentMethod === "сертификат" ? v.giftCertificateId : undefined,
+        giftCertificateId: editPaymentMethod === "сертификат" ? editSelectedCertId : undefined,
         certificateAmountUsed: editPaymentMethod === "сертификат" ? baseAmount : undefined,
-        debtId: editPaymentMethod === "в долг" ? v.debtId : undefined,
-        clientName: editPaymentMethod === "в долг" ? v.clientName : undefined,
-        clientPhone: editPaymentMethod === "в долг" ? v.clientPhone : undefined,
+        debtId: editPaymentMethod === "в долг" ? resolvedDebtId : undefined,
+        clientName: editPaymentMethod === "в долг" ? resolvedClientName : undefined,
+        clientPhone: editPaymentMethod === "в долг" ? resolvedClientPhone : undefined,
         originalWorkCost: v.originalWorkCost || v.workCost,
         originalMaterialsCost: v.originalMaterialsCost || v.materialsCost,
         editLogs: [...v.editLogs, newLog],
@@ -716,7 +760,15 @@ export default function DailyAccounting({
       return sum + calculateAcquiring(c.nominal, "дебетовая карта", certSettings.acquiringCommission);
     }, 0);
 
-  const totalAcquiringToday = Math.round((totalAcquiringFromVisits + totalAcquiringFromSolarium + totalAcquiringFromCerts) * 100) / 100;
+  const debtPaymentsToday = debtRecords.flatMap(d => d.payments.filter(p => p.date === selectedDate));
+
+  const totalAcquiringFromDebts = debtPaymentsToday
+    .filter(p => p.paymentMethod === "дебетовая карта")
+    .reduce((sum, p) => sum + getDebtPaymentAcquiringCost(p, settingsRules), 0);
+
+  const totalAcquiringToday = Math.round(
+    (totalAcquiringFromVisits + totalAcquiringFromSolarium + totalAcquiringFromCerts + totalAcquiringFromDebts) * 100
+  ) / 100;
 
   const dayExpensesTotal = dayExtraTransactions
     .filter(t => t.type === "минус")
@@ -740,9 +792,10 @@ export default function DailyAccounting({
     .filter(c => c.soldDate === selectedDate && c.salePaymentMethod === "перевод")
     .reduce((sum, c) => sum + c.nominal, 0);
 
-  const debtPaymentsToday = debtRecords.flatMap(d => d.payments.filter(p => p.date === selectedDate));
   const debtPaymentsCash = debtPaymentsToday.filter(p => p.paymentMethod === "наличные").reduce((s, p) => s + p.amount, 0);
-  const debtPaymentsCard = debtPaymentsToday.filter(p => p.paymentMethod === "дебетовая карта").reduce((s, p) => s + p.amount, 0);
+  const debtPaymentsCard = debtPaymentsToday
+    .filter(p => p.paymentMethod === "дебетовая карта")
+    .reduce((s, p) => s + getDebtPaymentCardTotal(p, settingsRules), 0);
   const debtPaymentsTransfer = debtPaymentsToday.filter(p => p.paymentMethod === "перевод").reduce((s, p) => s + p.amount, 0);
 
   const transferTotalToday =
@@ -771,9 +824,35 @@ export default function DailyAccounting({
         .filter(t => t.date === selectedDate && (t.type === "выплата" || t.type === "аванс"))
         .reduce((sum, t) => sum + t.amount, 0)
     : 0;
-  // We can pass master transactions as props or let parent manage them. Let's make sure we compute it dynamically. We'll find all "выплата" completed today
-  // Let's calculate total salary paid today:
-  // To allow perfect reporting, let's display the metrics clearly.
+
+  const endCash = Math.max(0, startCash + cashInflowToday - dayExpensesTotal - activeMasterPayoutsToday);
+
+  const handlePrintShiftSummary = () => {
+    printShiftSummary({
+      dateLabel: new Date(selectedDate).toLocaleDateString("ru-RU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+      startCash,
+      cashInflow: cashInflowToday,
+      cashBreakdown: `Визиты: ${visitsCashTotal} ₽ | Солярий: ${solariumCashRevenue} ₽ | Сертиф.: ${certSalesCashToday} ₽ | Долги: ${debtPaymentsCash} ₽`,
+      cardTotal: visitsCardTotal + solariumCardRevenue + certSalesCardToday + debtPaymentsCard,
+      cardBreakdown: `Визиты: ${visitsCardTotal} ₽ | Солярий: ${solariumCardRevenue} ₽ | Сертиф.: ${certSalesCardToday} ₽ | Долги: ${debtPaymentsCard} ₽`,
+      transferTotal: transferTotalToday,
+      transferBreakdown: `Визиты: ${visitsTransferTotal} ₽ | Солярий: ${solariumTransferRevenue} ₽ | Сертиф.: ${certSalesTransferToday} ₽ | Долги: ${debtPaymentsTransfer} ₽`,
+      certRedemption: visitsCertTotal,
+      newDebts: visitsDebtTotal,
+      acquiringTotal: totalAcquiringToday,
+      expensesTotal: dayExpensesTotal,
+      materialsTotal: totalSalonMaterialsCost + totalSolariumMaterialsToday,
+      payoutsTotal: activeMasterPayoutsToday,
+      endCash,
+      visitCount: dayVisits.length,
+      solariumSessions: daySolariumSessions.length,
+    });
+  };
 
   return (
     <div className="space-y-3" id="daily-accounting-view">
@@ -811,6 +890,16 @@ export default function DailyAccounting({
               id="set-today-btn"
             >
               Сегодня
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintShiftSummary}
+              className="px-2.5 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded cursor-pointer transition-colors flex items-center gap-1"
+              title="Печать итога смены"
+              id="print-shift-summary-btn"
+            >
+              <Printer className="h-3 w-3" />
+              Итог дня
             </button>
           </div>
         </div>
@@ -1199,6 +1288,45 @@ export default function DailyAccounting({
                               </select>
                             </div>
                           </div>
+                          {editPaymentMethod === "сертификат" && (
+                            <div>
+                              <label className="block text-[9px] font-bold text-slate-400 uppercase">Сертификат</label>
+                              <select
+                                value={editSelectedCertId}
+                                onChange={(e) => setEditSelectedCertId(e.target.value)}
+                                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded px-2 py-1 focus:outline-none"
+                              >
+                                <option value="">— Выберите —</option>
+                                {getEditAvailableCerts(visit.id).map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    № {c.code} — остаток {c.balance.toLocaleString()} ₽
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {editPaymentMethod === "в долг" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase">Имя клиента *</label>
+                                <input
+                                  type="text"
+                                  value={editClientName}
+                                  onChange={(e) => setEditClientName(e.target.value)}
+                                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase">Телефон</label>
+                                <input
+                                  type="text"
+                                  value={editClientPhone}
+                                  onChange={(e) => setEditClientPhone(e.target.value)}
+                                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
                           <div className="flex justify-end gap-1.5 pt-1">
                             <button
                               onClick={() => setEditingVisitId(null)}
@@ -1710,7 +1838,7 @@ export default function DailyAccounting({
                <span className="text-[8px] text-slate-500 font-mono">(Проект в ящике наличными)</span>
             </div>
             <span className="text-lg font-black font-mono text-emerald-400">
-               {Math.max(0, startCash + cashInflowToday - dayExpensesTotal - activeMasterPayoutsToday).toLocaleString()} ₽
+               {endCash.toLocaleString()} ₽
             </span>
           </div>
         </div>

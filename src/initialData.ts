@@ -182,4 +182,6 @@ export const DEFAULT_APP_PREFERENCES = {
   hideFormulaCalculations: false,
   keepOwnerUnlocked: false,
   autoLockDuration: 5,
+  autoBackupEnabled: true,
+  autoBackupInterval: "weekly" as "daily" | "weekly",
 };

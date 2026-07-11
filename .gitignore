@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+release-120/
 temp_extract/
 .env
 .env.local

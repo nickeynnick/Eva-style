@@ -24,7 +24,9 @@ import {
   Visit, 
   SolariumSession,
   AdminShift,
-  MasterTransaction
+  MasterTransaction,
+  GiftCertificate,
+  DebtRecord,
 } from "../types";
 import {
   getActiveSettingsForDate,
@@ -63,6 +65,14 @@ import {
   Printer
 } from "lucide-react";
 import { ResetAppMode } from "../utils/resetAppData";
+import { computeDayAcquiring } from "../utils/dailyFinanceUtils";
+import { AutoBackupInterval } from "../utils/backupData";
+import {
+  exportAdminShiftsCsv,
+  exportMasterPayrollCsv,
+  exportMonthlyRevenueCsv,
+} from "../utils/csvExport";
+import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
 
 interface OwnerSectionProps {
   employees: Employee[];
@@ -85,6 +95,8 @@ interface OwnerSectionProps {
   solariumSessions: SolariumSession[];
   adminShifts: AdminShift[];
   masterTransactions: MasterTransaction[];
+  giftCertificates: GiftCertificate[];
+  debtRecords: DebtRecord[];
   activeSettingsIdx: number;
   showDeletedVisits: boolean;
   setShowDeletedVisits: (val: boolean) => void;
@@ -106,6 +118,11 @@ interface OwnerSectionProps {
   setKeepOwnerUnlocked?: (val: boolean) => void;
   autoLockDuration?: number;
   setAutoLockDuration?: (val: number) => void;
+  autoBackupEnabled?: boolean;
+  setAutoBackupEnabled?: (val: boolean) => void;
+  autoBackupInterval?: AutoBackupInterval;
+  setAutoBackupInterval?: (val: AutoBackupInterval) => void;
+  lastAutoBackupDate?: string | null;
   onLock?: () => void;
   onResetApp?: (mode: "preserveTariffs" | "full") => void;
 }
@@ -131,6 +148,8 @@ export default function OwnerSection({
   solariumSessions,
   adminShifts,
   masterTransactions,
+  giftCertificates,
+  debtRecords,
   showDeletedVisits,
   setShowDeletedVisits,
   allowDeleteVisits,
@@ -151,6 +170,11 @@ export default function OwnerSection({
   setKeepOwnerUnlocked = () => {},
   autoLockDuration = 5,
   setAutoLockDuration = () => {},
+  autoBackupEnabled = true,
+  setAutoBackupEnabled = () => {},
+  autoBackupInterval = "weekly",
+  setAutoBackupInterval = () => {},
+  lastAutoBackupDate = null,
   onLock = () => {},
   onResetApp,
 }: OwnerSectionProps) {
@@ -657,6 +681,54 @@ export default function OwnerSection({
     totalExpensesExcludingMaterials
   } = financials;
 
+  const periodComparison = useMemo(() => {
+    if (finPeriodType !== "month") return null;
+    const currentPrefix = `${finYear}-${(finMonth + 1).toString().padStart(2, "0")}-`;
+    let prevMonth = finMonth - 1;
+    let prevYear = finYear;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear -= 1;
+    }
+    const prevPrefix = `${prevYear}-${(prevMonth + 1).toString().padStart(2, "0")}-`;
+    const current = computeMonthMetrics(
+      currentPrefix,
+      visits,
+      solariumSessions,
+      adminShifts,
+      extraTransactions,
+      employees,
+      settingsRules,
+      giftCertificates,
+      debtRecords
+    );
+    const previous = computeMonthMetrics(
+      prevPrefix,
+      visits,
+      solariumSessions,
+      adminShifts,
+      extraTransactions,
+      employees,
+      settingsRules,
+      giftCertificates,
+      debtRecords
+    );
+    return { current, previous, prevLabel: monthsRussian[prevMonth], currLabel: monthsRussian[finMonth] };
+  }, [
+    finPeriodType,
+    finYear,
+    finMonth,
+    visits,
+    solariumSessions,
+    adminShifts,
+    extraTransactions,
+    employees,
+    settingsRules,
+    giftCertificates,
+    debtRecords,
+    monthsRussian,
+  ]);
+
   const handleGeneratePdfReport = () => {
     // 1. Create a quiet hidden iframe
     const iframe = document.createElement("iframe");
@@ -1134,9 +1206,14 @@ export default function OwnerSection({
         }
         return sum + (visit.workCost * (pctVal / 100));
       }, 0);
-      const dayAcquiring = dayVisits
-        .filter(v => v.paymentMethod === "дебетовая карта")
-        .reduce((sum, v) => sum + v.acquiringCost, 0);
+      const dayAcquiring = computeDayAcquiring(
+        dateStr,
+        visits,
+        solariumSessions,
+        giftCertificates,
+        debtRecords,
+        settingsRules
+      );
 
       const dayMaterialsPurchaseExpenses = dayOtherTxs
         .filter(t => t.type === "минус" && (t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
@@ -1178,7 +1255,7 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, settingsRules]);
+  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, settingsRules, giftCertificates, debtRecords]);
 
   const yearlyLedgerList = useMemo(() => {
     const list = [];
@@ -1220,12 +1297,22 @@ export default function OwnerSection({
         }
         return sum + (visit.workCost * (pctVal / 100));
       }, 0);
-      const monthAcquiring = monthVisits
-        .filter(v => v.paymentMethod === "дебетовая карта")
-        .reduce((sum, v) => sum + v.acquiringCost, 0) +
-        monthSolarium
-        .filter(s => s.paymentMethod === "дебетовая карта")
-        .reduce((sum, s) => sum + getSolariumSessionAcquiring(s, settingsRules), 0);
+      const monthAcquiring = (() => {
+        let sum = 0;
+        const daysInMonth = new Date(finYear, month + 1, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateStr = `${finYear}-${(month + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
+          sum += computeDayAcquiring(
+            dateStr,
+            visits,
+            solariumSessions,
+            giftCertificates,
+            debtRecords,
+            settingsRules
+          );
+        }
+        return Math.round(sum * 100) / 100;
+      })();
 
       const monthMaterialsPurchaseExpenses = monthOtherTxs
         .filter(t => t.type === "минус" && (t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
@@ -1258,7 +1345,7 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, settingsRules]);
+  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, settingsRules, giftCertificates, debtRecords]);
 
   const handleAddBill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2149,6 +2236,86 @@ export default function OwnerSection({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Financial Ledger Aggregations (P&L Card) */}
             <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-3">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-rose-500" />
+                  Экспорт в Excel (CSV)
+                </h3>
+                <p className="text-[11px] text-slate-400">Файлы открываются в Excel с разделителем «;» и кодировкой UTF-8.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportMasterPayrollCsv(
+                        employees,
+                        visits,
+                        masterTransactions,
+                        monthPrefix
+                      )
+                    }
+                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900"
+                  >
+                    Ведомость мастеров
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportAdminShiftsCsv(employees, adminShifts, monthPrefix)}
+                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200"
+                  >
+                    Табель админов
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportMonthlyRevenueCsv(finYear, visits, solariumSessions, settingsRules)
+                    }
+                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-lg hover:bg-rose-100"
+                  >
+                    Выручка за {finYear}
+                  </button>
+                </div>
+              </div>
+
+              {periodComparison && (
+                <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-3">
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Сравнение: {periodComparison.currLabel} vs {periodComparison.prevLabel} {finYear}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    {[
+                      {
+                        label: "Выручка (работа + солярий)",
+                        cur: periodComparison.current.grossRevenueExcludingMaterials,
+                        prev: periodComparison.previous.grossRevenueExcludingMaterials,
+                      },
+                      {
+                        label: "Чистый результат",
+                        cur: periodComparison.current.netEarnings,
+                        prev: periodComparison.previous.netEarnings,
+                      },
+                      {
+                        label: "Визитов",
+                        cur: periodComparison.current.visitCount,
+                        prev: periodComparison.previous.visitCount,
+                      },
+                    ].map((row) => {
+                      const delta = formatDelta(row.cur, row.prev);
+                      return (
+                        <div key={row.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">{row.label}</div>
+                          <div className="font-mono font-bold text-slate-900">
+                            {row.cur.toLocaleString("ru-RU")}{row.label.includes("Визит") ? "" : " ₽"}
+                          </div>
+                          <div className={`text-[10px] font-mono mt-1 ${delta.positive ? "text-emerald-600" : "text-red-600"}`}>
+                            {delta.text}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
                 <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => toggleBlock("pnl-summary")}>
                   <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
@@ -4284,6 +4451,66 @@ export default function OwnerSection({
                 )}
               </div>
               </>
+              )}
+            </div>
+
+            {/* Auto backup settings */}
+            <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-5">
+              <div className="flex items-center justify-between cursor-pointer select-none pb-2 border-b border-slate-100" onClick={() => toggleBlock("security-auto-backup")}>
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <FileText className="h-4.5 w-4.5 text-emerald-600" />
+                  Автосохранение резервной копии
+                </h4>
+                <button type="button" className="text-slate-400 hover:text-slate-600 focus:outline-none">
+                  {collapsedBlocks["security-auto-backup"] ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </button>
+              </div>
+
+              {!collapsedBlocks["security-auto-backup"] && (
+                <>
+                  <p className="text-xs text-slate-400 font-sans">
+                    Программа автоматически сохраняет JSON-резервную копию в папку «Документы → Ева-стиль → Backups» (только в Windows-приложении).
+                  </p>
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="space-y-0.5 pr-2">
+                      <span className="text-xs font-bold text-slate-700 block text-left">Включить автосохранение</span>
+                      <span className="text-[11px] text-slate-400 block font-sans text-left">
+                        Копия создаётся без диалога и без участия пользователя.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoBackupEnabled(!autoBackupEnabled)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        autoBackupEnabled ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          autoBackupEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {autoBackupEnabled && (
+                    <div className="flex flex-wrap items-center gap-3 p-4 bg-emerald-50/50 border border-emerald-100/60 rounded-xl">
+                      <span className="text-xs text-slate-600 font-semibold">Интервал:</span>
+                      <select
+                        value={autoBackupInterval}
+                        onChange={(e) => setAutoBackupInterval(e.target.value as AutoBackupInterval)}
+                        className="text-xs font-bold border border-emerald-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      >
+                        <option value="daily">Раз в день</option>
+                        <option value="weekly">Раз в неделю</option>
+                      </select>
+                      {lastAutoBackupDate && (
+                        <span className="text-[11px] text-slate-500">
+                          Последняя копия: {new Date(lastAutoBackupDate + "T12:00:00").toLocaleDateString("ru-RU")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld("evaStyleDesktop", {
   version,
   isPortable: !!process.env.PORTABLE_EXECUTABLE_DIR,
   saveBackup: (payload) => ipcRenderer.invoke("save-backup", payload),
+  autoSaveBackup: (payload) => ipcRenderer.invoke("auto-save-backup", payload),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
 });

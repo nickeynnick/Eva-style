@@ -97,6 +97,8 @@ export interface DebtPayment {
   date: string;
   amount: number;
   paymentMethod: ReceivingPaymentMethod;
+  /** Комиссия эквайринга при оплате картой */
+  acquiringCost?: number;
   comment?: string;
 }
 

@@ -1,6 +1,6 @@
 param(
     [string]$Repo = "nickeynnick/Eva-style",
-    [string]$Tag = "v1.1.1"
+    [string]$Tag = "v1.2.0"
 )
 
 $ErrorActionPreference = "Stop"
