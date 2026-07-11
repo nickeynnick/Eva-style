@@ -3,7 +3,6 @@ import {
   GiftCertificate,
   DebtRecord,
   ReceivingPaymentMethod,
-  SettingsRule,
 } from "../types";
 import {
   RECEIVING_PAYMENT_METHODS,
@@ -28,7 +27,6 @@ interface CertificatesAndDebtsProps {
   setDebtRecords: React.Dispatch<React.SetStateAction<DebtRecord[]>>;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
-  activeSettings: SettingsRule;
   allowDeleteCertificates?: boolean;
 }
 

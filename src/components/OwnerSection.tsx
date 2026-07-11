@@ -26,6 +26,12 @@ import {
   AdminShift,
   MasterTransaction
 } from "../types";
+import {
+  getActiveSettingsForDate,
+  getSolariumMinuteRate,
+  getSolariumSessionAcquiring,
+  getSolariumSessionTotal,
+} from "../utils/settingsUtils";
 import { 
   Users, 
   TrendingUp, 
@@ -460,9 +466,11 @@ export default function OwnerSection({
   const currentMonthExtraTxs = useMemo(() => extraTransactions.filter(t => isDateInPeriod(t.date) && !t.isDeleted), [extraTransactions, isDateInPeriod]);
   const currentMonthShifts = useMemo(() => adminShifts.filter(s => isDateInPeriod(s.date)), [adminShifts, isDateInPeriod]);
 
-  // Solarium minutos / cosmetics
-  const activeSettings = settingsRules[0]; // Active system rules
-  const solariumMinPrice = activeSettings ? activeSettings.solariumMinuteRate : 30;
+  const todaySettings = useMemo(() => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
+    return getActiveSettingsForDate(settingsRules, todayStr);
+  }, [settingsRules]);
 
   const selectedPeriodTitle = useMemo(() => {
     if (finPeriodType === "today") {
@@ -502,7 +510,10 @@ export default function OwnerSection({
     }, 0);
 
     const totalSolariumMinutes = currentMonthSolarium.reduce((sum, s) => sum + s.minutes, 0);
-    const totalSolariumMinsRevenues = totalSolariumMinutes * solariumMinPrice;
+    const totalSolariumMinsRevenues = currentMonthSolarium.reduce(
+      (sum, s) => sum + s.minutes * getSolariumMinuteRate(s, settingsRules),
+      0
+    );
     const totalSolariumCreamRevenues = currentMonthSolarium.reduce((sum, s) => sum + s.creamPrice, 0);
     const totalSolariumStickersRevenues = currentMonthSolarium.reduce((sum, s) => sum + s.stickersPrice, 0);
     const totalSolariumGross = totalSolariumMinsRevenues + totalSolariumCreamRevenues + totalSolariumStickersRevenues;
@@ -553,18 +564,13 @@ export default function OwnerSection({
       .filter(t => t.type === "минус" && !(t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const commissionPct = activeSettings ? activeSettings.acquiringCommission : 3.5;
     const visitsAcquiring = currentMonthVisits
       .filter(v => v.paymentMethod === "дебетовая карта")
       .reduce((sum, v) => sum + v.acquiringCost, 0);
 
     const solariumAcquiring = currentMonthSolarium
       .filter(s => s.paymentMethod === "дебетовая карта")
-      .reduce((sum, s) => {
-        if (s.acquiringCost !== undefined) return sum + s.acquiringCost;
-        const baseCost = (s.minutes * solariumMinPrice) + s.creamPrice + s.stickersPrice;
-        return sum + Math.round(baseCost * (commissionPct / 100) * 100) / 100;
-      }, 0);
+      .reduce((sum, s) => sum + getSolariumSessionAcquiring(s, settingsRules), 0);
 
     const totalAcquiringCommissionPaid = visitsAcquiring + solariumAcquiring;
 
@@ -586,11 +592,7 @@ export default function OwnerSection({
 
     const cashlessSolariumGross = currentMonthSolarium
       .filter(s => s.paymentMethod === "дебетовая карта")
-      .reduce((sum, s) => {
-        const baseCost = (s.minutes * solariumMinPrice) + s.creamPrice + s.stickersPrice;
-        const acq = s.acquiringCost !== undefined ? s.acquiringCost : Math.round(baseCost * (commissionPct / 100) * 100) / 100;
-        return sum + baseCost + acq;
-      }, 0);
+      .reduce((sum, s) => sum + getSolariumSessionTotal(s, settingsRules), 0);
 
     const cashlessGrossRevenue = cashlessVisitsGross + cashlessSolariumGross;
     const cashlessAcquiringCommissions = totalAcquiringCommissionPaid;
@@ -620,11 +622,11 @@ export default function OwnerSection({
       cashlessGrossRevenue,
       cashlessAcquiringCommissions,
       cashlessNetRevenue,
-      commissionPct,
+      commissionPct: todaySettings.acquiringCommission,
       grossRevenueExcludingMaterials,
       totalExpensesExcludingMaterials
     };
-  }, [currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, solariumMinPrice, activeSettings]);
+  }, [currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, settingsRules, todaySettings]);
 
   const {
     totalVisitsWorkRevenues,
@@ -1033,7 +1035,10 @@ export default function OwnerSection({
         if (v.salonMaterialsCost !== undefined) return sum + v.salonMaterialsCost;
         return sum + ((v as any).isSalonMaterials !== false ? v.materialsCost : 0);
       }, 0) + daySolCream + daySolStickers;
-      const solariumRevenue = daySolarium.reduce((sum, s) => sum + s.minutes * solariumMinPrice, 0);
+      const solariumRevenue = daySolarium.reduce(
+        (sum, s) => sum + s.minutes * getSolariumMinuteRate(s, settingsRules),
+        0
+      );
       
       const totalRevenue = beautyRevenue + materialsRevenue + solariumRevenue;
 
@@ -1061,7 +1066,7 @@ export default function OwnerSection({
       });
     }
     return data;
-  }, [currentMonthVisits, currentMonthSolarium, datesList, solariumMinPrice, finPeriodType]);
+  }, [currentMonthVisits, currentMonthSolarium, datesList, settingsRules, finPeriodType]);
 
   const chartSummaries = useMemo(() => {
     if (dailyChartData.length === 0) return { bestDayStr: "—", avgDayStr: "0 ₽" };
@@ -1107,7 +1112,10 @@ export default function OwnerSection({
         if (v.salonMaterialsCost !== undefined) return sum + v.salonMaterialsCost;
         return sum + ((v as any).isSalonMaterials !== false ? v.materialsCost : 0);
       }, 0) + daySolCream + daySolStickers;
-      const daySolGross = daySolarium.reduce((sum, s) => sum + (s.minutes * solariumMinPrice), 0);
+      const daySolGross = daySolarium.reduce(
+        (sum, s) => sum + s.minutes * getSolariumMinuteRate(s, settingsRules),
+        0
+      );
       
       const dayGross = dayWorkRevenue + daySolGross; // Excludes Materials
       
@@ -1170,7 +1178,7 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, solariumMinPrice]);
+  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, settingsRules]);
 
   const yearlyLedgerList = useMemo(() => {
     const list = [];
@@ -1191,7 +1199,10 @@ export default function OwnerSection({
         if (v.salonMaterialsCost !== undefined) return sum + v.salonMaterialsCost;
         return sum + ((v as any).isSalonMaterials !== false ? v.materialsCost : 0);
       }, 0) + monthSolCream + monthSolStickers;
-      const monthSolGross = monthSolarium.reduce((sum, s) => sum + (s.minutes * solariumMinPrice), 0);
+      const monthSolGross = monthSolarium.reduce(
+        (sum, s) => sum + s.minutes * getSolariumMinuteRate(s, settingsRules),
+        0
+      );
       const monthGross = monthWorkRevenue + monthSolGross; // Excludes Materials
       
       // Expenses
@@ -1214,12 +1225,7 @@ export default function OwnerSection({
         .reduce((sum, v) => sum + v.acquiringCost, 0) +
         monthSolarium
         .filter(s => s.paymentMethod === "дебетовая карта")
-        .reduce((sum, s) => {
-          if (s.acquiringCost !== undefined) return sum + s.acquiringCost;
-          const commPct = activeSettings ? activeSettings.acquiringCommission : 3.5;
-          const baseCost = (s.minutes * solariumMinPrice) + s.creamPrice + s.stickersPrice;
-          return sum + Math.round(baseCost * (commPct / 100) * 100) / 100;
-        }, 0);
+        .reduce((sum, s) => sum + getSolariumSessionAcquiring(s, settingsRules), 0);
 
       const monthMaterialsPurchaseExpenses = monthOtherTxs
         .filter(t => t.type === "минус" && (t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
@@ -1252,7 +1258,7 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, solariumMinPrice, activeSettings]);
+  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, settingsRules]);
 
   const handleAddBill = (e: React.FormEvent) => {
     e.preventDefault();

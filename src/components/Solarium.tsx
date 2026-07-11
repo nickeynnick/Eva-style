@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { SolariumSession, SettingsRule, ReceivingPaymentMethod } from "../types";
 import { paymentMethodLabel } from "../utils/paymentUtils";
+import {
+  getActiveSettingsForDate,
+  getSolariumSessionBase,
+  getSolariumSessionAcquiring,
+  getSolariumSessionTotal,
+} from "../utils/settingsUtils";
 import { Sun, Calendar, Plus, Trash2, ListFilter, RotateCcw, TrendingUp } from "lucide-react";
 
 interface SolariumProps {
   solariumSessions: SolariumSession[];
   setSolariumSessions: React.Dispatch<React.SetStateAction<SolariumSession[]>>;
-  activeSettings: SettingsRule;
+  settingsRules: SettingsRule[];
   selectedDate: string;
   showHistory?: boolean;
 }
@@ -16,7 +22,7 @@ type PeriodFilterMode = "selected" | "range" | "month" | "all";
 export default function Solarium({
   solariumSessions,
   setSolariumSessions,
-  activeSettings,
+  settingsRules,
   selectedDate,
   showHistory = true,
 }: SolariumProps) {
@@ -64,14 +70,15 @@ export default function Solarium({
     }
   });
 
+  const sessionFormSettings = getActiveSettingsForDate(settingsRules, sessionDate);
+
   // Calculate statistics for filtered list
   const totalMinutesInPeriod = filteredSessions.reduce((sum, s) => sum + s.minutes, 0);
   const totalMaterialsInPeriod = filteredSessions.reduce((sum, s) => sum + s.creamPrice + s.stickersPrice, 0);
-  const totalRevenueInPeriod = filteredSessions.reduce((sum, s) => {
-    const base = (s.minutes * activeSettings.solariumMinuteRate) + s.creamPrice + s.stickersPrice;
-    const acq = s.acquiringCost !== undefined ? s.acquiringCost : (s.paymentMethod === "дебетовая карта" ? Math.round(base * (activeSettings.acquiringCommission / 100) * 100) / 100 : 0);
-    return sum + base + acq;
-  }, 0);
+  const totalRevenueInPeriod = filteredSessions.reduce(
+    (sum, s) => sum + getSolariumSessionTotal(s, settingsRules),
+    0
+  );
 
   // Add session
   const handleAddSession = (e: React.FormEvent) => {
@@ -81,17 +88,21 @@ export default function Solarium({
       return;
     }
 
-    const baseCost = Number(minutes) * activeSettings.solariumMinuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0);
-    const acq = paymentMethod === "дебетовая карта" ? Math.round(baseCost * (activeSettings.acquiringCommission / 100) * 100) / 100 : 0;
+    const minuteRate = sessionFormSettings.solariumMinuteRate;
+    const baseCost = Number(minutes) * minuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0);
+    const acq = paymentMethod === "дебетовая карта"
+      ? Math.round(baseCost * (sessionFormSettings.acquiringCommission / 100) * 100) / 100
+      : 0;
 
     const newSession: SolariumSession = {
       id: "sol-" + Date.now(),
       date: sessionDate,
       minutes: Number(minutes),
+      minuteRate,
       creamPrice: Number(creamPrice) || 0,
       stickersPrice: Number(stickersPrice) || 0,
       paymentMethod,
-      acquiringCost: acq
+      acquiringCost: acq,
     };
 
     setSolariumSessions(prev => [newSession, ...prev]);
@@ -123,7 +134,7 @@ export default function Solarium({
           <div className="space-y-1">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block font-sans">Цена за минуту (В тарифах)</span>
             <div className="text-2xl font-mono font-extrabold text-slate-800">
-              {activeSettings.solariumMinuteRate} ₽
+              {sessionFormSettings.solariumMinuteRate} ₽
             </div>
           </div>
           <div className="h-10 w-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
@@ -248,7 +259,7 @@ export default function Solarium({
               <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-100 font-sans space-y-1">
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>За минуты:</span>
-                  <span className="font-mono">{((Number(minutes) || 0) * activeSettings.solariumMinuteRate).toLocaleString()} ₽</span>
+                  <span className="font-mono">{((Number(minutes) || 0) * sessionFormSettings.solariumMinuteRate).toLocaleString()} ₽</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>Материалы (крем/стикини):</span>
@@ -256,9 +267,9 @@ export default function Solarium({
                 </div>
                 {paymentMethod === "дебетовая карта" && (
                   <div className="flex justify-between text-xs text-slate-500">
-                    <span>Эквайринг ({activeSettings.acquiringCommission}%):</span>
+                    <span>Эквайринг ({sessionFormSettings.acquiringCommission}%):</span>
                     <span className="font-mono text-blue-600">
-                      +{Math.round(((Number(minutes) || 0) * activeSettings.solariumMinuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0)) * (activeSettings.acquiringCommission / 100) * 100 / 100).toLocaleString()} ₽
+                      +{Math.round(((Number(minutes) || 0) * sessionFormSettings.solariumMinuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0)) * (sessionFormSettings.acquiringCommission / 100) * 100 / 100).toLocaleString()} ₽
                     </span>
                   </div>
                 )}
@@ -271,8 +282,8 @@ export default function Solarium({
                   <span>Всего:</span>
                   <span className="text-md font-mono text-amber-600">
                     {Math.round(
-                      ((Number(minutes) || 0) * activeSettings.solariumMinuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0)) *
-                      (1 + (paymentMethod === "дебетовая карта" ? activeSettings.acquiringCommission / 100 : 0))
+                      ((Number(minutes) || 0) * sessionFormSettings.solariumMinuteRate + (Number(creamPrice) || 0) + (Number(stickersPrice) || 0)) *
+                      (1 + (paymentMethod === "дебетовая карта" ? sessionFormSettings.acquiringCommission / 100 : 0))
                     ).toLocaleString()} ₽
                   </span>
                 </div>
@@ -397,9 +408,8 @@ export default function Solarium({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredSessions.map(session => {
-                      const baseCost = (session.minutes * activeSettings.solariumMinuteRate) + session.creamPrice + session.stickersPrice;
-                      const hasAcq = session.paymentMethod === "дебетовая карта";
-                      const acqFee = session.acquiringCost !== undefined ? session.acquiringCost : (hasAcq ? Math.round(baseCost * (activeSettings.acquiringCommission / 100) * 100) / 100 : 0);
+                      const baseCost = getSolariumSessionBase(session, settingsRules);
+                      const acqFee = getSolariumSessionAcquiring(session, settingsRules);
                       const totalCost = baseCost + acqFee;
                       return (
                         <tr key={session.id} className="hover:bg-slate-50/50 transition-colors">

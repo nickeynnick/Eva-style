@@ -62,6 +62,8 @@ export interface SolariumSession {
   id: string;
   date: string;
   minutes: number;
+  /** Тариф ₽/мин на момент создания сеанса */
+  minuteRate?: number;
   creamPrice: number;
   stickersPrice: number;
   paymentMethod: ReceivingPaymentMethod | "в долг";

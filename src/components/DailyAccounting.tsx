@@ -14,11 +14,18 @@ import {
 } from "../types";
 import {
   calculateVisitTotal,
+  calculateAcquiring,
   paymentMethodLabel,
   getVisitCashAmount,
   getVisitCardAmount,
   getVisitTransferAmount,
 } from "../utils/paymentUtils";
+import {
+  getActiveSettingsForDate,
+  getSolariumSessionBase,
+  getSolariumSessionAcquiring,
+  getSolariumSessionTotal,
+} from "../utils/settingsUtils";
 import { 
   Calendar, 
   Plus, 
@@ -46,7 +53,7 @@ interface DailyAccountingProps {
   setDailyCash: React.Dispatch<React.SetStateAction<DailyCashState[]>>;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
-  activeSettings: SettingsRule;
+  settingsRules: SettingsRule[];
   masterTransactions?: MasterTransaction[];
   giftCertificates: GiftCertificate[];
   setGiftCertificates: React.Dispatch<React.SetStateAction<GiftCertificate[]>>;
@@ -68,7 +75,7 @@ export default function DailyAccounting({
   setDailyCash,
   selectedDate,
   setSelectedDate,
-  activeSettings,
+  settingsRules,
   masterTransactions,
   giftCertificates,
   setGiftCertificates,
@@ -130,22 +137,20 @@ export default function DailyAccounting({
   const dayExtraTransactions = rawDayExtraTransactions.filter(t => !t.isDeleted);
   const allDayExtraTransactionsIncludeDeleted = showDeletedVisits ? rawDayExtraTransactions : rawDayExtraTransactions.filter(t => !t.isDeleted);
 
-  // Compute Solarium dynamic revenue
+  const daySettings = getActiveSettingsForDate(settingsRules, selectedDate);
+
+  // Compute Solarium dynamic revenue (по сохранённому тарифу каждого сеанса)
   const solariumCashRevenue = daySolariumSessions
     .filter(s => s.paymentMethod === "наличные")
-    .reduce((sum, s) => sum + (s.minutes * activeSettings.solariumMinuteRate) + s.creamPrice + s.stickersPrice, 0);
+    .reduce((sum, s) => sum + getSolariumSessionBase(s, settingsRules), 0);
 
   const solariumCardRevenue = daySolariumSessions
     .filter(s => s.paymentMethod === "дебетовая карта")
-    .reduce((sum, s) => {
-      const base = (s.minutes * activeSettings.solariumMinuteRate) + s.creamPrice + s.stickersPrice;
-      const acq = s.acquiringCost !== undefined ? s.acquiringCost : Math.round(base * (activeSettings.acquiringCommission / 100) * 100) / 100;
-      return sum + base + acq;
-    }, 0);
+    .reduce((sum, s) => sum + getSolariumSessionTotal(s, settingsRules), 0);
 
   const solariumTransferRevenue = daySolariumSessions
     .filter(s => s.paymentMethod === "перевод")
-    .reduce((sum, s) => sum + (s.minutes * activeSettings.solariumMinuteRate) + s.creamPrice + s.stickersPrice, 0);
+    .reduce((sum, s) => sum + getSolariumSessionBase(s, settingsRules), 0);
 
   const totalSolariumRevenue = solariumCashRevenue + solariumCardRevenue + solariumTransferRevenue;
 
@@ -281,7 +286,7 @@ export default function DailyAccounting({
     const finalManicureType = isManicurist ? manicureType : undefined;
     
     const { acquiringCost: acq, totalCost: total } = calculateVisitTotal(
-      costWork, costMat, paymentMethod, activeSettings.acquiringCommission
+      costWork, costMat, paymentMethod, daySettings.acquiringCommission
     );
 
     const visitId = "visit-" + Date.now();
@@ -374,77 +379,185 @@ export default function DailyAccounting({
 
   const handleSaveEditVisit = (visitId: string) => {
     if (!editMasterId || editWorkCost === "") return;
-    
-    setVisits(prev => prev.map(v => {
-      if (v.id === visitId) {
-        const costWork = Number(editWorkCost);
-        const costSalonMat = Number(editSalonMaterialsCostInput) || 0;
-        const costMasterMat = Number(editMasterMaterialsCostInput) || 0;
-        const costMat = costSalonMat + costMasterMat;
-        
-        const selectedEmp = employees.find(e => e.id === editMasterId);
-        const isManicurist = selectedEmp?.position === Position.Manicurist;
-        const finalManicureType = isManicurist ? editManicureType : undefined;
-        
-        let acq = 0;
-        if (editPaymentMethod === "дебетовая карта") {
-          acq = Math.round((costWork + costMat) * (activeSettings.acquiringCommission / 100) * 100) / 100;
-        } else if (editPaymentMethod === "сертификат" || editPaymentMethod === "в долг") {
-          acq = 0;
-        }
-        
-        const total = (editPaymentMethod === "сертификат" || editPaymentMethod === "в долг")
-          ? costWork + costMat
-          : costWork + costMat + acq;
-        const now = new Date();
-        const timeStr = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()} ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-        
-        const changes: string[] = [];
-        if (v.masterId !== editMasterId) {
-          const oldName = employees.find(e => e.id === v.masterId)?.name;
-          const newName = employees.find(e => e.id === editMasterId)?.name;
-          changes.push(`мастер: ${oldName} -> ${newName}`);
-        }
-        if (v.workCost !== costWork) changes.push(`работа: ${v.workCost} -> ${costWork} ₽`);
-        
-        const oldSalon = v.salonMaterialsCost !== undefined ? v.salonMaterialsCost : ((v as any).isSalonMaterials !== false ? v.materialsCost : 0);
-        const oldMaster = v.masterMaterialsCost !== undefined ? v.masterMaterialsCost : ((v as any).isSalonMaterials === false ? v.materialsCost : 0);
-        if (oldSalon !== costSalonMat) changes.push(`мат. салона: ${oldSalon} -> ${costSalonMat} ₽`);
-        if (oldMaster !== costMasterMat) changes.push(`мат. мастера: ${oldMaster} -> ${costMasterMat} ₽`);
-        
-        if (v.manicureType !== finalManicureType) {
-          changes.push(`тип маникюра: ${v.manicureType || "нет"} -> ${finalManicureType || "нет"}`);
-        }
-        if (v.paymentMethod !== editPaymentMethod) changes.push(`оплата: ${v.paymentMethod} -> ${editPaymentMethod}`);
 
-        const newLog = {
-          timestamp: timeStr,
-          action: "отредактирован" as const,
-          details: `Изменения: ${changes.join(", ")}. Итоговое сальдо: ${total} ₽.`
-        };
+    const oldVisit = visits.find(v => v.id === visitId);
+    if (!oldVisit) return;
 
-        return {
-          ...v,
-          masterId: editMasterId,
-          workCost: costWork,
-          materialsCost: costMat,
-          salonMaterialsCost: costSalonMat,
-          masterMaterialsCost: costMasterMat,
-          manicureType: finalManicureType,
-          paymentMethod: editPaymentMethod,
-          acquiringCost: acq,
-          totalCost: total,
-          originalWorkCost: v.originalWorkCost || v.workCost,
-          originalMaterialsCost: v.originalMaterialsCost || v.materialsCost,
-          editLogs: [...v.editLogs, newLog]
-        };
+    const costWork = Number(editWorkCost);
+    const costSalonMat = Number(editSalonMaterialsCostInput) || 0;
+    const costMasterMat = Number(editMasterMaterialsCostInput) || 0;
+    const costMat = costSalonMat + costMasterMat;
+    const baseAmount = costWork + costMat;
+    const visitSettings = getActiveSettingsForDate(settingsRules, oldVisit.date);
+
+    if (editPaymentMethod === "сертификат") {
+      const certId = oldVisit.giftCertificateId;
+      if (!certId) {
+        alert("Нельзя сменить способ оплаты на сертификат при редактировании. Создайте новый визит.");
+        return;
       }
-      return v;
+      const cert = giftCertificates.find(c => c.id === certId);
+      let availableBalance = cert?.balance ?? 0;
+      if (
+        oldVisit.paymentMethod === "сертификат" &&
+        oldVisit.giftCertificateId === certId &&
+        oldVisit.certificateAmountUsed
+      ) {
+        availableBalance += oldVisit.certificateAmountUsed;
+      }
+      if (!cert || !cert.isActive || availableBalance < baseAmount) {
+        alert(`Недостаточно средств на сертификате. Доступно: ${availableBalance} ₽, нужно: ${baseAmount} ₽`);
+        return;
+      }
+    }
+
+    if (editPaymentMethod === "в долг" && !oldVisit.debtId && !oldVisit.clientName) {
+      alert("Нельзя сменить способ оплаты на «в долг» при редактировании без существующей записи долга.");
+      return;
+    }
+
+    // Восстановить списание сертификата / закрыть долг от старой версии визита
+    if (oldVisit.paymentMethod === "сертификат") {
+      restoreCertificateFromVisit(oldVisit);
+    }
+    if (oldVisit.paymentMethod === "в долг" && editPaymentMethod !== "в долг") {
+      closeDebtFromVisit(oldVisit);
+    }
+
+    // Применить новое списание сертификата
+    if (editPaymentMethod === "сертификат" && oldVisit.giftCertificateId) {
+      setGiftCertificates(prev => prev.map(c => {
+        if (c.id !== oldVisit.giftCertificateId) return c;
+        const newBalance = Math.round((c.balance - baseAmount) * 100) / 100;
+        return {
+          ...c,
+          balance: newBalance,
+          isActive: newBalance > 0,
+          usages: [
+            ...c.usages.filter(u => u.visitId !== visitId),
+            { id: "usage-" + Date.now(), date: oldVisit.date, visitId, amount: baseAmount },
+          ],
+        };
+      }));
+    }
+
+    // Обновить или создать долг
+    if (editPaymentMethod === "в долг") {
+      if (oldVisit.debtId) {
+        setDebtRecords(prev => prev.map(d => {
+          if (d.id !== oldVisit.debtId) return d;
+          const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+          const remaining = Math.max(0, Math.round((baseAmount - paid) * 100) / 100);
+          return {
+            ...d,
+            originalAmount: baseAmount,
+            remainingAmount: remaining,
+            isClosed: remaining <= 0,
+          };
+        }));
+      }
+    }
+
+    const selectedEmp = employees.find(e => e.id === editMasterId);
+    const isManicurist = selectedEmp?.position === Position.Manicurist;
+    const finalManicureType = isManicurist ? editManicureType : undefined;
+
+    const { acquiringCost: acq, totalCost: total } = calculateVisitTotal(
+      costWork, costMat, editPaymentMethod, visitSettings.acquiringCommission
+    );
+
+    const now = new Date();
+    const timeStr = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()} ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+
+    setVisits(prev => prev.map(v => {
+      if (v.id !== visitId) return v;
+
+      const changes: string[] = [];
+      if (v.masterId !== editMasterId) {
+        const oldName = employees.find(e => e.id === v.masterId)?.name;
+        const newName = employees.find(e => e.id === editMasterId)?.name;
+        changes.push(`мастер: ${oldName} -> ${newName}`);
+      }
+      if (v.workCost !== costWork) changes.push(`работа: ${v.workCost} -> ${costWork} ₽`);
+
+      const oldSalon = v.salonMaterialsCost !== undefined ? v.salonMaterialsCost : ((v as any).isSalonMaterials !== false ? v.materialsCost : 0);
+      const oldMaster = v.masterMaterialsCost !== undefined ? v.masterMaterialsCost : ((v as any).isSalonMaterials === false ? v.materialsCost : 0);
+      if (oldSalon !== costSalonMat) changes.push(`мат. салона: ${oldSalon} -> ${costSalonMat} ₽`);
+      if (oldMaster !== costMasterMat) changes.push(`мат. мастера: ${oldMaster} -> ${costMasterMat} ₽`);
+
+      if (v.manicureType !== finalManicureType) {
+        changes.push(`тип маникюра: ${v.manicureType || "нет"} -> ${finalManicureType || "нет"}`);
+      }
+      if (v.paymentMethod !== editPaymentMethod) changes.push(`оплата: ${v.paymentMethod} -> ${editPaymentMethod}`);
+
+      const newLog = {
+        timestamp: timeStr,
+        action: "отредактирован" as const,
+        details: `Изменения: ${changes.join(", ")}. Итоговое сальдо: ${total} ₽.`,
+      };
+
+      return {
+        ...v,
+        masterId: editMasterId,
+        workCost: costWork,
+        materialsCost: costMat,
+        salonMaterialsCost: costSalonMat,
+        masterMaterialsCost: costMasterMat,
+        manicureType: finalManicureType,
+        paymentMethod: editPaymentMethod,
+        acquiringCost: acq,
+        totalCost: total,
+        giftCertificateId: editPaymentMethod === "сертификат" ? v.giftCertificateId : undefined,
+        certificateAmountUsed: editPaymentMethod === "сертификат" ? baseAmount : undefined,
+        debtId: editPaymentMethod === "в долг" ? v.debtId : undefined,
+        clientName: editPaymentMethod === "в долг" ? v.clientName : undefined,
+        clientPhone: editPaymentMethod === "в долг" ? v.clientPhone : undefined,
+        originalWorkCost: v.originalWorkCost || v.workCost,
+        originalMaterialsCost: v.originalMaterialsCost || v.materialsCost,
+        editLogs: [...v.editLogs, newLog],
+      };
     }));
 
     setEditingVisitId(null);
   };
 
+  const applyCertificateForVisit = (visit: Visit): boolean => {
+    if (visit.paymentMethod !== "сертификат" || !visit.giftCertificateId || !visit.certificateAmountUsed) {
+      return true;
+    }
+    const cert = giftCertificates.find(c => c.id === visit.giftCertificateId);
+    if (!cert || !cert.isActive || cert.balance < visit.certificateAmountUsed) {
+      alert(`Недостаточно средств на сертификате для восстановления визита. Остаток: ${cert?.balance ?? 0} ₽`);
+      return false;
+    }
+    setGiftCertificates(prev => prev.map(c => {
+      if (c.id !== visit.giftCertificateId) return c;
+      const newBalance = Math.round((c.balance - visit.certificateAmountUsed!) * 100) / 100;
+      return {
+        ...c,
+        balance: newBalance,
+        isActive: newBalance > 0,
+        usages: [...c.usages, { id: "usage-" + Date.now(), date: visit.date, visitId: visit.id, amount: visit.certificateAmountUsed! }],
+      };
+    }));
+    return true;
+  };
+
+  const reopenDebtFromVisit = (visit: Visit) => {
+    if (!visit.debtId) return;
+    const amount = visit.workCost + visit.materialsCost;
+    setDebtRecords(prev => prev.map(d => {
+      if (d.id !== visit.debtId) return d;
+      const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+      const remaining = Math.max(0, Math.round((amount - paid) * 100) / 100);
+      return {
+        ...d,
+        originalAmount: amount,
+        remainingAmount: remaining,
+        isClosed: remaining <= 0,
+      };
+    }));
+  };
   const restoreCertificateFromVisit = (visit: Visit) => {
     if (!visit.giftCertificateId || !visit.certificateAmountUsed) return;
     setGiftCertificates(prev => prev.map(c => {
@@ -493,6 +606,16 @@ export default function DailyAccounting({
   };
 
   const handleRestoreVisit = (visitId: string) => {
+    const visit = visits.find(v => v.id === visitId);
+    if (!visit) return;
+
+    if (visit.paymentMethod === "сертификат" && !applyCertificateForVisit(visit)) {
+      return;
+    }
+    if (visit.paymentMethod === "в долг") {
+      reopenDebtFromVisit(visit);
+    }
+
     setVisits(prev => prev.map(v => {
       if (v.id === visitId) {
         const now = new Date();
@@ -584,13 +707,16 @@ export default function DailyAccounting({
 
   const totalAcquiringFromSolarium = daySolariumSessions
     .filter(s => s.paymentMethod === "дебетовая карта")
-    .reduce((sum, s) => {
-      const base = (s.minutes * activeSettings.solariumMinuteRate) + s.creamPrice + s.stickersPrice;
-      const acq = s.acquiringCost !== undefined ? s.acquiringCost : Math.round(base * (activeSettings.acquiringCommission / 100) * 100) / 100;
-      return sum + acq;
+    .reduce((sum, s) => sum + getSolariumSessionAcquiring(s, settingsRules), 0);
+
+  const totalAcquiringFromCerts = giftCertificates
+    .filter(c => c.soldDate === selectedDate && c.salePaymentMethod === "дебетовая карта")
+    .reduce((sum, c) => {
+      const certSettings = getActiveSettingsForDate(settingsRules, c.soldDate);
+      return sum + calculateAcquiring(c.nominal, "дебетовая карта", certSettings.acquiringCommission);
     }, 0);
 
-  const totalAcquiringToday = Math.round((totalAcquiringFromVisits + totalAcquiringFromSolarium) * 100) / 100;
+  const totalAcquiringToday = Math.round((totalAcquiringFromVisits + totalAcquiringFromSolarium + totalAcquiringFromCerts) * 100) / 100;
 
   const dayExpensesTotal = dayExtraTransactions
     .filter(t => t.type === "минус")
@@ -605,7 +731,11 @@ export default function DailyAccounting({
     .reduce((sum, c) => sum + c.nominal, 0);
   const certSalesCardToday = giftCertificates
     .filter(c => c.soldDate === selectedDate && c.salePaymentMethod === "дебетовая карта")
-    .reduce((sum, c) => sum + c.nominal, 0);
+    .reduce((sum, c) => {
+      const certSettings = getActiveSettingsForDate(settingsRules, c.soldDate);
+      const acq = calculateAcquiring(c.nominal, "дебетовая карта", certSettings.acquiringCommission);
+      return sum + c.nominal + acq;
+    }, 0);
   const certSalesTransferToday = giftCertificates
     .filter(c => c.soldDate === selectedDate && c.salePaymentMethod === "перевод")
     .reduce((sum, c) => sum + c.nominal, 0);
@@ -909,9 +1039,9 @@ export default function DailyAccounting({
                 </div>
                 {paymentMethod === "дебетовая карта" && (
                   <div className="flex justify-between text-amber-700 font-semibold">
-                    <span>Эквайринг ({activeSettings.acquiringCommission}%):</span>
+                    <span>Эквайринг ({daySettings.acquiringCommission}%):</span>
                     <span>
-                      +{(Math.round(((Number(workCost) || 0) + (Number(salonMaterialsCostInput) || 0) + (Number(masterMaterialsCostInput) || 0)) * (activeSettings.acquiringCommission / 100) * 100) / 100).toLocaleString()} ₽
+                      +{(Math.round(((Number(workCost) || 0) + (Number(salonMaterialsCostInput) || 0) + (Number(masterMaterialsCostInput) || 0)) * (daySettings.acquiringCommission / 100) * 100) / 100).toLocaleString()} ₽
                     </span>
                   </div>
                 )}
@@ -930,7 +1060,7 @@ export default function DailyAccounting({
                   <span className="text-sm font-extrabold text-rose-700">
                     {Math.round(
                       ((Number(workCost) || 0) + (Number(salonMaterialsCostInput) || 0) + (Number(masterMaterialsCostInput) || 0)) * 
-                      (1 + (paymentMethod === "дебетовая карта" ? activeSettings.acquiringCommission / 100 : 0))
+                      (1 + (paymentMethod === "дебетовая карта" ? daySettings.acquiringCommission / 100 : 0))
                     ).toLocaleString()} ₽
                   </span>
                 </div>

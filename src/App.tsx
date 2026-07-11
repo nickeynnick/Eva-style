@@ -263,6 +263,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : 5; // default 5 minutes
   });
 
+  const [adminPaidWages, setAdminPaidWages] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem("eva_style_admin_paid_wages");
+    return saved ? JSON.parse(saved) : {};
+  });
+
   // Track last activity timestamp (milliseconds) for the security idle auto-lock
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
 
@@ -417,20 +422,15 @@ export default function App() {
   }, [autoLockDuration]);
 
   useEffect(() => {
+    localStorage.setItem("eva_style_admin_paid_wages", JSON.stringify(adminPaidWages));
+  }, [adminPaidWages]);
+
+  useEffect(() => {
     if (activeTab !== "owner" && !keepOwnerUnlocked) {
       setIsOwnerUnlocked(false);
     }
   }, [activeTab, keepOwnerUnlocked]);
 
-
-  // Active settings refers to the latest added settings rule
-  const activeSettings = settingsRules[0] || {
-    id: "default-rule",
-    effectiveDate: "2020-01-01",
-    acquiringCommission: 3.5,
-    adminBaseRate: 1500,
-    solariumMinuteRate: 30
-  };
 
   // Administrative Backup utility to let Owner export/import SQLite alternatives
   const handleResetApp = (mode: ResetAppMode) => {
@@ -507,10 +507,24 @@ export default function App() {
       dailyCash,
       settingsRules,
       materialPrices,
+      materialPackaging,
+      materialConsumptions,
       adminDaysRates,
       adminDaysRatesRules,
       giftCertificates,
       debtRecords,
+      adminPaidWages,
+      preferences: {
+        showDeletedVisits,
+        allowDeleteVisits,
+        allowDeleteCertificates,
+        showVisitChangeHistory,
+        allowMasterPayouts,
+        allowAdminShiftEdits,
+        hideFormulaCalculations,
+        keepOwnerUnlocked,
+        autoLockDuration,
+      },
     };
     const content = JSON.stringify(data, null, 2);
     const fileName = `eva_style_export_${selectedDate}.json`;
@@ -547,10 +561,25 @@ export default function App() {
           if (parsed.dailyCash) setDailyCash(parsed.dailyCash);
           if (parsed.settingsRules) setSettingsRules(parsed.settingsRules);
           if (parsed.materialPrices) setMaterialPrices(parsed.materialPrices);
+          if (parsed.materialPackaging) setMaterialPackaging(parsed.materialPackaging);
+          if (parsed.materialConsumptions) setMaterialConsumptions(parsed.materialConsumptions);
           if (parsed.adminDaysRates) setAdminDaysRates(parsed.adminDaysRates);
           if (parsed.adminDaysRatesRules) setAdminDaysRatesRules(parsed.adminDaysRatesRules);
           if (parsed.giftCertificates) setGiftCertificates(parsed.giftCertificates);
           if (parsed.debtRecords) setDebtRecords(parsed.debtRecords);
+          if (parsed.adminPaidWages) setAdminPaidWages(parsed.adminPaidWages);
+          if (parsed.preferences) {
+            const p = parsed.preferences;
+            if (p.showDeletedVisits !== undefined) setShowDeletedVisits(p.showDeletedVisits);
+            if (p.allowDeleteVisits !== undefined) setAllowDeleteVisits(p.allowDeleteVisits);
+            if (p.allowDeleteCertificates !== undefined) setAllowDeleteCertificates(p.allowDeleteCertificates);
+            if (p.showVisitChangeHistory !== undefined) setShowVisitChangeHistory(p.showVisitChangeHistory);
+            if (p.allowMasterPayouts !== undefined) setAllowMasterPayouts(p.allowMasterPayouts);
+            if (p.allowAdminShiftEdits !== undefined) setAllowAdminShiftEdits(p.allowAdminShiftEdits);
+            if (p.hideFormulaCalculations !== undefined) setHideFormulaCalculations(p.hideFormulaCalculations);
+            if (p.keepOwnerUnlocked !== undefined) setKeepOwnerUnlocked(p.keepOwnerUnlocked);
+            if (p.autoLockDuration !== undefined) setAutoLockDuration(p.autoLockDuration);
+          }
           alert("Локальная резервная копия успешно восстановлена!");
         } catch (err) {
           alert("Неверный формат резервного файла!");
@@ -608,13 +637,13 @@ export default function App() {
                 className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 transition-colors"
                 title="Экспорт резервной копии"
               >
-                <Upload className="h-3.5 w-3.5" />
+                <Download className="h-3.5 w-3.5" />
               </button>
               <label 
                 className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 transition-colors cursor-pointer"
                 title="Импорт резервной копии"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Upload className="h-3.5 w-3.5" />
                 <input 
                   type="file" 
                   accept=".json" 
@@ -672,7 +701,7 @@ export default function App() {
             setDailyCash={setDailyCash}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
-            activeSettings={activeSettings}
+            settingsRules={settingsRules}
             masterTransactions={masterTransactions}
             giftCertificates={giftCertificates}
             setGiftCertificates={setGiftCertificates}
@@ -692,7 +721,6 @@ export default function App() {
             setDebtRecords={setDebtRecords}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
-            activeSettings={activeSettings}
             allowDeleteCertificates={allowDeleteCertificates}
           />
         </div>
@@ -709,7 +737,7 @@ export default function App() {
           <Solarium
             solariumSessions={solariumSessions}
             setSolariumSessions={setSolariumSessions}
-            activeSettings={activeSettings}
+            settingsRules={settingsRules}
             selectedDate={selectedDate}
           />
         </div>
@@ -735,6 +763,8 @@ export default function App() {
             adminDaysRatesRules={adminDaysRatesRules}
             selectedDate={selectedDate}
             allowAdminShiftEdits={allowAdminShiftEdits}
+            adminPaidWages={adminPaidWages}
+            setAdminPaidWages={setAdminPaidWages}
           />
         </div>
 
@@ -810,7 +840,7 @@ export default function App() {
           <span className="hidden md:inline border-l border-slate-300 pl-4 text-slate-400">Шифрование сессий: <span className="text-rose-700 font-bold">Активно</span></span>
         </div>
         <div className="text-[10px] text-slate-500 font-bold">
-          © 2026 Ева-стиль v1.1.0 · Windows
+          © 2026 Ева-стиль v1.1.1 · Windows
         </div>
       </footer>
     </div>

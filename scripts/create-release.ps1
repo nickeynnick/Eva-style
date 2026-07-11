@@ -6,35 +6,25 @@ param(
     [string]$Repo = "nickeynnick/Eva-style",
     
     [Parameter(Mandatory=$false)]
-    [string]$Tag = "v1.1.0",
+    [string]$Tag = "v1.1.1",
     
     [Parameter(Mandatory=$false)]
-    [string]$InstallerPath = "release\eva-style-setup-1.1.0.exe",
+    [string]$InstallerPath = "release\eva-style-setup-1.1.1.exe",
     
     [Parameter(Mandatory=$false)]
-    [string]$PortablePath = "release\eva-style-1.1.0-portable.exe"
+    [string]$PortablePath = "release\eva-style-1.1.1-portable.exe"
 )
 
 $ErrorActionPreference = "Stop"
 
 $notes = @"
-## Ева-стиль 1.1.0
+## Ева-стиль 1.1.1
 
-### Приветственная анимация
-При запуске программы показывается красивая анимация с логотипом «Ева-стиль», плавно исчезающая через 2.5 секунды.
-
-### Пустой старт
-При первом запуске список сотрудников пуст — данные больше не загружаются автоматически. Владелица сама добавляет мастеров и администраторов через кабинет.
-
-### Упрощение справки
-Из раздела «Справка» удалены интерактивные калькуляторы зарплаты и кассы, а также информация о кодовом слове для сброса пароля. Справка теперь содержит только справочник часто задаваемых вопросов.
-
-### Диалог обновления
-При проверке обновлений показывается список изменений, прогресс загрузки на иконке в панели задач, диалог установки после завершения.
+См. release-notes.md в корне репозитория.
 
 ## Файлы
-- `eva-style-setup-1.1.0.exe` — установщик (NSIS)
-- `eva-style-1.1.0-portable.exe` — портативная версия
+- `eva-style-setup-1.1.1.exe` — установщик (NSIS)
+- `eva-style-1.1.1-portable.exe` — портативная версия
 "@
 
 $headers = @{

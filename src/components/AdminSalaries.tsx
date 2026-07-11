@@ -10,6 +10,8 @@ interface AdminSalariesProps {
   adminDaysRatesRules?: AdminDaysRateRule[];
   selectedDate: string;
   allowAdminShiftEdits?: boolean;
+  adminPaidWages: Record<string, number>;
+  setAdminPaidWages: React.Dispatch<React.SetStateAction<Record<string, number>>>;
 }
 
 export default function AdminSalaries({
@@ -20,6 +22,8 @@ export default function AdminSalaries({
   adminDaysRatesRules,
   selectedDate,
   allowAdminShiftEdits = true,
+  adminPaidWages,
+  setAdminPaidWages,
 }: AdminSalariesProps) {
   // Navigation year & month state (defaults to current local clock)
   const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
@@ -28,15 +32,8 @@ export default function AdminSalaries({
   // Store custom manual "paid" amounts inside a local component state or hook it up with localStorage.
   // We'll write to a dictionary of payments state that persists in localStorage or matches a property.
   // To keep it simple and reactive, let's keep an object state of paid wages in state & synchronize with localStorage.
-  const [adminPaidWages, setAdminPaidWages] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem("eva_style_admin_paid_wages");
-    return saved ? JSON.parse(saved) : {};
-  });
-
   const updatePaidWage = (adminId: string, amount: number) => {
-    const next = { ...adminPaidWages, [adminId]: amount };
-    setAdminPaidWages(next);
-    localStorage.setItem("eva_style_admin_paid_wages", JSON.stringify(next));
+    setAdminPaidWages(prev => ({ ...prev, [adminId]: amount }));
   };
 
   const admins = employees.filter(e => e.position === Position.Administrator);
