@@ -2,7 +2,7 @@
   "name": "eva-style",
   "productName": "Ева-стиль",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Программа для управления салоном красоты «Ева-стиль»",
   "author": "Ева-стиль",
   "type": "module",

@@ -31,6 +31,7 @@ import {
   getDebtPaymentCardTotal,
 } from "../utils/dailyFinanceUtils";
 import { printShiftSummary } from "../utils/shiftSummary";
+import { showAppAlert } from "../utils/appDialog";
 import { 
   Calendar, 
   Plus, 
@@ -270,7 +271,7 @@ export default function DailyAccounting({
   const handleAddVisit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!masterId || workCost === "") {
-      alert("Выберите мастера и укажите стоимость работы");
+      showAppAlert("Выберите мастера и укажите стоимость работы");
       return;
     }
 
@@ -282,22 +283,22 @@ export default function DailyAccounting({
 
     if (paymentMethod === "сертификат") {
       if (!selectedCertId) {
-        alert("Выберите подарочный сертификат");
+        showAppAlert("Выберите подарочный сертификат");
         return;
       }
       const cert = giftCertificates.find(c => c.id === selectedCertId);
       if (!cert || !cert.isActive) {
-        alert("Сертификат не найден или неактивен");
+        showAppAlert("Сертификат не найден или неактивен");
         return;
       }
       if (cert.balance < baseAmount) {
-        alert(`Недостаточно средств на сертификате. Остаток: ${cert.balance} ₽, нужно: ${baseAmount} ₽`);
+        showAppAlert(`Недостаточно средств на сертификате. Остаток: ${cert.balance} ₽, нужно: ${baseAmount} ₽`);
         return;
       }
     }
 
     if (paymentMethod === "в долг" && !clientName.trim()) {
-      alert("Укажите имя клиента для оформления долга");
+      showAppAlert("Укажите имя клиента для оформления долга");
       return;
     }
     
@@ -415,7 +416,7 @@ export default function DailyAccounting({
 
     if (editPaymentMethod === "сертификат") {
       if (!editSelectedCertId) {
-        alert("Выберите подарочный сертификат");
+        showAppAlert("Выберите подарочный сертификат");
         return;
       }
       const certId = editSelectedCertId;
@@ -429,13 +430,13 @@ export default function DailyAccounting({
         availableBalance += oldVisit.certificateAmountUsed;
       }
       if (!cert || availableBalance < baseAmount) {
-        alert(`Недостаточно средств на сертификате. Доступно: ${availableBalance} ₽, нужно: ${baseAmount} ₽`);
+        showAppAlert(`Недостаточно средств на сертификате. Доступно: ${availableBalance} ₽, нужно: ${baseAmount} ₽`);
         return;
       }
     }
 
     if (editPaymentMethod === "в долг" && !editClientName.trim()) {
-      alert("Укажите имя клиента для оформления долга");
+      showAppAlert("Укажите имя клиента для оформления долга");
       return;
     }
 
@@ -571,7 +572,7 @@ export default function DailyAccounting({
     }
     const cert = giftCertificates.find(c => c.id === visit.giftCertificateId);
     if (!cert || !cert.isActive || cert.balance < visit.certificateAmountUsed) {
-      alert(`Недостаточно средств на сертификате для восстановления визита. Остаток: ${cert?.balance ?? 0} ₽`);
+      showAppAlert(`Недостаточно средств на сертификате для восстановления визита. Остаток: ${cert?.balance ?? 0} ₽`);
       return false;
     }
     setGiftCertificates(prev => prev.map(c => {
@@ -692,7 +693,7 @@ export default function DailyAccounting({
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (expAmount === "" || !expComment) {
-      alert("Введите сумму и комментарий к расходу");
+      showAppAlert("Введите сумму и комментарий к расходу");
       return;
     }
 

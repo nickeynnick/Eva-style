@@ -13,6 +13,7 @@ import {
   calculateAcquiring,
 } from "../utils/paymentUtils";
 import { getActiveSettingsForDate } from "../utils/settingsUtils";
+import { showAppAlert, showAppConfirmAsync } from "../utils/appDialog";
 import {
   Gift,
   Users,
@@ -72,15 +73,15 @@ export default function CertificatesAndDebts({
     e.preventDefault();
     const code = normalizeCertificateNumber(certNumber);
     if (!isValidCertificateNumber(code)) {
-      alert("Укажите номер сертификата — только цифры");
+      showAppAlert("Укажите номер сертификата — только цифры");
       return;
     }
     if (giftCertificates.some((c) => c.code === code)) {
-      alert(`Сертификат с номером ${code} уже существует`);
+      showAppAlert(`Сертификат с номером ${code} уже существует`);
       return;
     }
     if (certNominal === "" || Number(certNominal) <= 0) {
-      alert("Укажите номинал сертификата");
+      showAppAlert("Укажите номинал сертификата");
       return;
     }
     const nominal = Number(certNominal);
@@ -109,10 +110,10 @@ export default function CertificatesAndDebts({
     );
   };
 
-  const handleDeleteCert = (id: string) => {
+  const handleDeleteCert = async (id: string) => {
     const cert = giftCertificates.find((c) => c.id === id);
     if (cert && cert.usages.length > 0) {
-      const ok = window.confirm(
+      const ok = await showAppConfirmAsync(
         `Сертификат №${cert.code} использовался в ${cert.usages.length} визитах. Удалить безвозвратно?`
       );
       if (!ok) {
@@ -169,14 +170,14 @@ export default function CertificatesAndDebts({
   const handlePayDebt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!payDebtId || payAmount === "" || Number(payAmount) <= 0) {
-      alert("Выберите должника и укажите сумму");
+      showAppAlert("Выберите должника и укажите сумму");
       return;
     }
     const amount = Number(payAmount);
     const debt = debtRecords.find((d) => d.id === payDebtId);
     if (!debt) return;
     if (amount > debt.remainingAmount) {
-      alert(`Сумма превышает остаток долга (${debt.remainingAmount} ₽)`);
+      showAppAlert(`Сумма превышает остаток долга (${debt.remainingAmount} ₽)`);
       return;
     }
 

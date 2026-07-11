@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { showAppAlert } from "../utils/appDialog";
 import { 
   Employee, 
   Visit, 
@@ -221,7 +222,7 @@ export default function MasterSalaries({
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetMasterId || amount === "") {
-      alert("Заполните имя мастера и сумму транзакции");
+      showAppAlert("Заполните имя мастера и сумму транзакции");
       return;
     }
 

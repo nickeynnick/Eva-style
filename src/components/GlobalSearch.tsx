@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Search, X, User, Gift, AlertCircle } from "lucide-react";
 import { Visit, GiftCertificate, DebtRecord } from "../types";
+import ModalOverlay from "./ModalOverlay";
 
 interface GlobalSearchProps {
   visits: Visit[];
@@ -82,14 +83,14 @@ export default function GlobalSearch({
         <Search className="h-3.5 w-3.5" />
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] bg-slate-900/40 px-4"
-          onClick={() => setOpen(false)}
-        >
+      <ModalOverlay
+        open={open}
+        onClose={() => setOpen(false)}
+        className="flex items-start justify-center pt-[12vh] px-4"
+        aria-label="Быстрый поиск"
+      >
           <div
             className="w-full max-w-lg bg-white rounded-lg border border-slate-200 shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
             id="global-search-panel"
           >
             <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
@@ -204,8 +205,7 @@ export default function GlobalSearch({
               )}
             </div>
           </div>
-        </div>
-      )}
+      </ModalOverlay>
     </>
   );
 }

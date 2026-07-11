@@ -1,6 +1,7 @@
 import React from "react";
 import { X, AlertTriangle, CheckCircle2, FileJson } from "lucide-react";
 import { BackupImportValidationResult } from "../utils/backupImport";
+import ModalOverlay from "./ModalOverlay";
 
 interface ImportPreviewModalProps {
   result: BackupImportValidationResult;
@@ -10,14 +11,10 @@ interface ImportPreviewModalProps {
 
 export default function ImportPreviewModal({ result, onConfirm, onCancel }: ImportPreviewModalProps) {
   const { preview, errors, warnings, valid } = result;
-  if (!preview) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 px-4" onClick={onCancel}>
-      <div
-        className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalOverlay open zIndex={60} onClose={onCancel} backdropClassName="bg-slate-900/50" aria-label="Импорт резервной копии">
+      <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2">
             <FileJson className="h-4 w-4 text-rose-500" />
@@ -51,7 +48,7 @@ export default function ImportPreviewModal({ result, onConfirm, onCancel }: Impo
             </div>
           )}
 
-          {valid && (
+          {valid && preview && (
             <>
               <p className="text-slate-600 font-semibold flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -94,6 +91,6 @@ export default function ImportPreviewModal({ result, onConfirm, onCancel }: Impo
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

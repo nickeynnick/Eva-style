@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { installFocusTracker } from "./utils/restoreAppFocus";
 import {
   Heart,
   Download,
@@ -8,6 +9,8 @@ import {
 import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
 import { serializeBackup, shouldRunAutoBackup } from "./utils/backupData";
 import { validateBackupImport } from "./utils/backupImport";
+import { showAppAlert } from "./utils/appDialog";
+import AppDialogHost from "./components/AppDialogHost";
 import GlobalSearch from "./components/GlobalSearch";
 import WelcomeOverlay from "./components/WelcomeOverlay";
 import ImportPreviewModal from "./components/ImportPreviewModal";
@@ -64,6 +67,10 @@ export default function App() {
 
   const backupPayloadRef = useRef(buildBackupPayload);
   backupPayloadRef.current = buildBackupPayload;
+
+  useEffect(() => {
+    installFocusTracker();
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -149,7 +156,7 @@ export default function App() {
   const handleResetApp = (mode: ResetAppMode) => {
     resetApp(mode);
     setSelectedDateUi(getTodayDateString());
-    alert(getResetSuccessMessage(mode));
+    showAppAlert(getResetSuccessMessage(mode));
   };
 
   const handleExportBackup = async () => {
@@ -192,6 +199,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800" id="eva_style_root">
+      <AppDialogHost />
       <WelcomeOverlay />
       {showWhatsNew && changelogEntry && (
         <WhatsNewModal
@@ -209,7 +217,7 @@ export default function App() {
           onConfirm={() => {
             if (importPreview.payload) importBackup(importPreview.payload);
             setImportPreview(null);
-            alert("Локальная резервная копия успешно восстановлена!");
+            showAppAlert("Локальная резервная копия успешно восстановлена!");
           }}
         />
       )}

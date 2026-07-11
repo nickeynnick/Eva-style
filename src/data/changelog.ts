@@ -6,6 +6,21 @@ export interface ChangelogEntry {
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.1",
+    title: "Ева-стиль 1.2.1",
+    sections: [
+      {
+        heading: "Исправления",
+        items: [
+          "Поля ввода снова работают после диалогов и модальных окон",
+          "Печать «Итог дня» без ошибки about:blank",
+          "Эквайринг в P&L за период совпадает с журналом",
+          "Исправлена загрузка preload в Electron (фокус, бэкапы)",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.2.0",
     title: "Ева-стиль 1.2.0",
     sections: [
@@ -67,5 +82,5 @@ export function getChangelogForVersion(version: string): ChangelogEntry | undefi
 }
 
 export function getLatestChangelogVersion(): string {
-  return APP_CHANGELOG[0]?.version ?? "1.2.0";
+  return APP_CHANGELOG[0]?.version ?? "1.2.1";
 }

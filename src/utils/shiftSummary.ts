@@ -1,3 +1,6 @@
+import { showAppAlert } from "./appDialog";
+import { restoreAppFocus } from "./restoreAppFocus";
+
 export interface ShiftSummaryData {
   dateLabel: string;
   startCash: number;
@@ -54,17 +57,35 @@ ${data.newDebts > 0 ? row("Новые долги", `${data.newDebts.toLocaleStri
 ${row("Материалы (услуги + солярий)", `${data.materialsTotal.toLocaleString("ru-RU")} ₽`)}
 </table>
 <p class="footer">Сформировано программой «Ева-стиль» · ${new Date().toLocaleString("ru-RU")}</p>
-<button onclick="window.print()" style="margin-top:16px;padding:8px 16px;background:#e11d48;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold">Печать</button>
+<script>window.onload=function(){setTimeout(function(){window.print();},600);};</script>
 </body></html>`;
 }
 
 export function printShiftSummary(data: ShiftSummaryData): void {
   const html = buildShiftSummaryHtml(data);
-  const win = window.open("", "_blank", "width=800,height=900");
-  if (!win) {
-    alert("Не удалось открыть окно печати. Разрешите всплывающие окна.");
+
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    iframe.remove();
+    showAppAlert("Не удалось подготовить документ для печати.");
     return;
   }
-  win.document.write(html);
-  win.document.close();
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.remove();
+    restoreAppFocus();
+  }, 5000);
 }

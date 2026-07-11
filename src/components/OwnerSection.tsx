@@ -65,7 +65,7 @@ import {
   Printer
 } from "lucide-react";
 import { ResetAppMode } from "../utils/resetAppData";
-import { computeDayAcquiring } from "../utils/dailyFinanceUtils";
+import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross } from "../utils/dailyFinanceUtils";
 import { AutoBackupInterval } from "../utils/backupData";
 import {
   exportAdminShiftsCsv,
@@ -73,6 +73,8 @@ import {
   exportMonthlyRevenueCsv,
 } from "../utils/csvExport";
 import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
+import { showAppAlert } from "../utils/appDialog";
+import { restoreAppFocus } from "../utils/restoreAppFocus";
 
 interface OwnerSectionProps {
   employees: Employee[];
@@ -195,7 +197,7 @@ export default function OwnerSection({
 
   const confirmReset = (mode: ResetAppMode) => {
     if (resetConfirmWord !== "СБРОС") {
-      alert("Для подтверждения введите слово СБРОС (заглавными буквами).");
+      showAppAlert("Для подтверждения введите слово СБРОС (заглавными буквами).");
       return;
     }
     setConfirmResetMode(null);
@@ -524,7 +526,7 @@ export default function OwnerSection({
   }, [finPeriodType, finSelectedDay, finStartDate, finEndDate, finMonth, finYear, monthsRussian]);
 
   const financials = useMemo(() => {
-    // Beauty work revenues
+    // Beauty work revenues (начисление: все визиты по workCost, независимо от способа оплаты)
     const totalVisitsWorkRevenues = currentMonthVisits.reduce((sum, v) => sum + v.workCost, 0);
     const totalVisitsMaterialsRevenues = currentMonthVisits.reduce((sum, v) => sum + v.materialsCost, 0);
 
@@ -588,15 +590,14 @@ export default function OwnerSection({
       .filter(t => t.type === "минус" && !(t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const visitsAcquiring = currentMonthVisits
-      .filter(v => v.paymentMethod === "дебетовая карта")
-      .reduce((sum, v) => sum + v.acquiringCost, 0);
-
-    const solariumAcquiring = currentMonthSolarium
-      .filter(s => s.paymentMethod === "дебетовая карта")
-      .reduce((sum, s) => sum + getSolariumSessionAcquiring(s, settingsRules), 0);
-
-    const totalAcquiringCommissionPaid = visitsAcquiring + solariumAcquiring;
+    const totalAcquiringCommissionPaid = computePeriodAcquiring(
+      datesList,
+      visits,
+      solariumSessions,
+      giftCertificates,
+      debtRecords,
+      settingsRules
+    );
 
     // Gross Revenue of Services & Minutes (Excluding Salon & Solarium Materials)
     const grossRevenueExcludingMaterials = totalVisitsWorkRevenues + totalSolariumMinsRevenues;
@@ -610,15 +611,14 @@ export default function OwnerSection({
     const totalExpenses = adminsMonthlyWages + mastersPortionsWages + totalAcquiringCommissionPaid + billExpenses;
 
     // Cashless metrics
-    const cashlessVisitsGross = currentMonthVisits
-      .filter(v => v.paymentMethod === "дебетовая карта")
-      .reduce((sum, v) => sum + v.workCost + v.materialsCost + v.acquiringCost, 0);
-
-    const cashlessSolariumGross = currentMonthSolarium
-      .filter(s => s.paymentMethod === "дебетовая карта")
-      .reduce((sum, s) => sum + getSolariumSessionTotal(s, settingsRules), 0);
-
-    const cashlessGrossRevenue = cashlessVisitsGross + cashlessSolariumGross;
+    const cashlessGrossRevenue = computePeriodCashlessGross(
+      datesList,
+      visits,
+      solariumSessions,
+      giftCertificates,
+      debtRecords,
+      settingsRules
+    );
     const cashlessAcquiringCommissions = totalAcquiringCommissionPaid;
     const cashlessNetRevenue = cashlessGrossRevenue - cashlessAcquiringCommissions;
 
@@ -650,7 +650,7 @@ export default function OwnerSection({
       grossRevenueExcludingMaterials,
       totalExpensesExcludingMaterials
     };
-  }, [currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, settingsRules, todaySettings]);
+  }, [currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, settingsRules, todaySettings, datesList, visits, solariumSessions, giftCertificates, debtRecords]);
 
   const {
     totalVisitsWorkRevenues,
@@ -1046,6 +1046,7 @@ export default function OwnerSection({
     // 4. Clean up after print menu dialog finishes/cancels to avoid DOM bloat
     setTimeout(() => {
       document.body.removeChild(iframe);
+      restoreAppFocus();
     }, 5000);
   };
 
@@ -1392,12 +1393,12 @@ export default function OwnerSection({
     };
 
     setSettingsRules(prev => [newRule, ...prev]);
-    alert("Новые тарифные правила зафиксированы в истории!");
+    showAppAlert("Новые тарифные правила зафиксированы в истории!");
   };
 
   const handleRemoveTariffRule = (id: string) => {
     if (settingsRules.length <= 1) {
-      alert("Нельзя удалить последнее правило тарифов!");
+      showAppAlert("Нельзя удалить последнее правило тарифов!");
       return;
     }
     setSettingsRules(prev => prev.filter(r => r.id !== id));
@@ -1433,12 +1434,12 @@ export default function OwnerSection({
       sunday: adminRuleSun
     };
     setAdminDaysRatesRules(prev => [newRule, ...prev]);
-    alert("Новое правило ставок администратора сохранено!");
+    showAppAlert("Новое правило ставок администратора сохранено!");
   };
 
   const handleRemoveAdminDaysRule = (id: string) => {
     if (adminDaysRatesRules.length <= 1) {
-      alert("Нельзя удалить последнее правило ставок!");
+      showAppAlert("Нельзя удалить последнее правило ставок!");
       return;
     }
     setAdminDaysRatesRules(prev => prev.filter(r => r.id !== id));
@@ -2334,7 +2335,7 @@ export default function OwnerSection({
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-150 pb-1">Доходы салона (Услуги и время)</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs md:text-sm">
                         <div className="flex justify-between py-1.5 px-3 bg-slate-50 rounded-lg">
-                          <span className="text-slate-600">Оказанные услуги красоты матерами:</span>
+                          <span className="text-slate-600">Оказанные услуги красоты мастерами:</span>
                           <span className="font-mono font-bold text-slate-800">+{totalVisitsWorkRevenues.toLocaleString()} ₽</span>
                         </div>
                         <div className="flex justify-between py-1.5 px-3 bg-slate-50 rounded-lg">
@@ -2421,7 +2422,7 @@ export default function OwnerSection({
                     <div className="bg-slate-900 text-white rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
                       <div>
                         <span className="text-xs text-slate-400 font-semibold uppercase tracking-widest block font-sans">Итоговая чистая прибыль салона</span>
-                        <p className="text-xs text-slate-400 font-sans">Учтены все визиты, солярий, зарплаты персонала и накладные операционные платежи (материалы считаются в отдельной секции выше)</p>
+                        <p className="text-xs text-slate-400 font-sans">Учтены все визиты (включая сертификат и долг), солярий, зарплаты персонала и накладные расходы. Материалы — в отдельной секции выше.</p>
                       </div>
                       <div className="text-right">
                         <div className="text-[11px] text-slate-400 font-sans">Валовый оборот (Услуги/Время): <strong className="font-mono text-slate-200">{grossRevenueExcludingMaterials.toLocaleString()} ₽</strong></div>

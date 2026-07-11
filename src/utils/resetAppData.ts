@@ -1,7 +1,9 @@
+import { showAppConfirmAsync, showAppPromptAsync } from "./appDialog";
+
 /** Подтверждение опасного сброса: пользователь вводит слово СБРОС */
-export function confirmResetAction(description: string): boolean {
-  if (!window.confirm(description)) return false;
-  const typed = window.prompt('Для подтверждения введите слово СБРОС (заглавными буквами):');
+export async function confirmResetAction(description: string): Promise<boolean> {
+  if (!(await showAppConfirmAsync(description))) return false;
+  const typed = await showAppPromptAsync("Для подтверждения введите слово СБРОС (заглавными буквами):");
   return typed === "СБРОС";
 }
 

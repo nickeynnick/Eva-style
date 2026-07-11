@@ -14,6 +14,20 @@ function formatReleaseNotes(info) {
   return "";
 }
 
+function refocusMainWindow(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+}
+
+function showMessageBox(mainWindow, options) {
+  return dialog.showMessageBox(mainWindow, options).then((result) => {
+    refocusMainWindow(mainWindow);
+    return result;
+  });
+}
+
 function setupAutoUpdater(mainWindow, appVersion) {
   let manualCheck = false;
   let downloadStarted = false;
@@ -37,8 +51,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
       (changelog ? `\n\nСписок изменений:\n${changelog}` : "") +
       `\n\nСкачать и установить обновление?`;
 
-    dialog
-      .showMessageBox(mainWindow, {
+    showMessageBox(mainWindow, {
         type: "info",
         title: "Доступно обновление",
         message: `Доступна новая версия ${info.version}`,
@@ -50,7 +63,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
       .then(({ response }) => {
         if (response === 0) {
           downloadStarted = true;
-          dialog.showMessageBox(mainWindow, {
+          showMessageBox(mainWindow, {
             type: "info",
             title: "Загрузка обновления",
             message: "Начинается загрузка обновления…",
@@ -74,7 +87,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
     if (!manualCheck) return;
     manualCheck = false;
     mainWindow.setProgressBar(-1);
-    dialog.showMessageBox(mainWindow, {
+    showMessageBox(mainWindow, {
       type: "info",
       title: "Обновления",
       message: "У вас установлена последняя версия.",
@@ -91,8 +104,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
     const detail = (changelog ? `Список изменений:\n${changelog}\n\n` : "") +
       "Перезапустить программу для установки обновления?";
 
-    dialog
-      .showMessageBox(mainWindow, {
+    showMessageBox(mainWindow, {
         type: "info",
         title: "Обновление готово",
         message: `Версия ${info.version} скачана.`,
@@ -117,7 +129,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
     const hint = error?.message?.includes("404")
       ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
       : "";
-    dialog.showMessageBox(mainWindow, {
+    showMessageBox(mainWindow, {
       type: "error",
       title: "Ошибка обновления",
       message: downloadStarted ? "Ошибка при скачивании обновления." : "Не удалось проверить обновления.",
@@ -135,7 +147,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
         const hint = error?.message?.includes("404")
           ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
           : "";
-        dialog.showMessageBox(mainWindow, {
+        showMessageBox(mainWindow, {
           type: "error",
           title: "Ошибка обновления",
           message: "Не удалось проверить обновления.",

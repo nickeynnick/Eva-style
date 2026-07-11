@@ -1,6 +1,7 @@
 import React from "react";
 import { X, Sparkles } from "lucide-react";
 import { ChangelogEntry } from "../data/changelog";
+import ModalOverlay from "./ModalOverlay";
 
 interface WhatsNewModalProps {
   entry: ChangelogEntry;
@@ -9,7 +10,7 @@ interface WhatsNewModalProps {
 
 export default function WhatsNewModal({ entry, onDismiss }: WhatsNewModalProps) {
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/40 px-4">
+    <ModalOverlay open zIndex={55} onClose={onDismiss} aria-label="Что нового">
       <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden">
         <div className="bg-gradient-to-r from-rose-500 to-rose-600 px-5 py-4 text-white">
           <div className="flex items-start justify-between gap-3">
@@ -54,6 +55,6 @@ export default function WhatsNewModal({ entry, onDismiss }: WhatsNewModalProps) 
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

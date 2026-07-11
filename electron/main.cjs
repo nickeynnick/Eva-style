@@ -9,6 +9,20 @@ const APP_VERSION = app.getVersion();
 
 let updaterControls = null;
 
+function refocusMainWindow(mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+}
+
+function showMessageBox(mainWindow, options) {
+  return dialog.showMessageBox(mainWindow, options).then((result) => {
+    refocusMainWindow(mainWindow);
+    return result;
+  });
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -24,6 +38,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      additionalArguments: [`--eva-version=${APP_VERSION}`],
     },
   });
 
@@ -55,7 +70,7 @@ function buildMenu(mainWindow) {
         const updateNote = isPortable
           ? "\n\nАвтообновление доступно только в установленной версии."
           : "\n\nОбновления проверяются автоматически при запуске.";
-        dialog.showMessageBox(mainWindow, {
+        showMessageBox(mainWindow, {
           type: "info",
           title: "Ева-стиль",
           message: "Ева-стиль — Учётный пульт",
@@ -138,6 +153,7 @@ function setupIpc(mainWindow) {
       defaultPath: path.join(app.getPath("documents"), fileName),
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
+    refocusMainWindow(mainWindow);
     if (!result.canceled && result.filePath) {
       fs.writeFileSync(result.filePath, content, "utf-8");
       return { success: true, path: result.filePath };
@@ -159,6 +175,11 @@ function setupIpc(mainWindow) {
     if (!updaterControls) return { status: "unavailable" };
     await updaterControls.checkForUpdates(true);
     return { status: "checking" };
+  });
+
+  ipcMain.handle("focus-window", () => {
+    refocusMainWindow(mainWindow);
+    return { success: true };
   });
 }
 

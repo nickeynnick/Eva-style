@@ -8,6 +8,7 @@ import {
   getSolariumSessionTotal,
 } from "../utils/settingsUtils";
 import { Sun, Calendar, Plus, Trash2, ListFilter, RotateCcw, TrendingUp } from "lucide-react";
+import { showAppAlert } from "../utils/appDialog";
 
 interface SolariumProps {
   solariumSessions: SolariumSession[];
@@ -84,7 +85,7 @@ export default function Solarium({
   const handleAddSession = (e: React.FormEvent) => {
     e.preventDefault();
     if (minutes === "" || Number(minutes) <= 0) {
-      alert("Укажите положительное количество минут");
+      showAppAlert("Укажите положительное количество минут");
       return;
     }
 
