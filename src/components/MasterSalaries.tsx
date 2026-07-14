@@ -57,6 +57,7 @@ export default function MasterSalaries({
   const [filterDay, setFilterDay] = useState(selectedDate);
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
+  const [filterMasterId, setFilterMasterId] = useState("");
 
   // Wages ledger period filter state
   const [ledgerPeriodType, setLedgerPeriodType] = useState<"today" | "day" | "month" | "custom" | "year" | "all">("all");
@@ -251,8 +252,9 @@ export default function MasterSalaries({
     return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   };
 
-  // Filter transaction records by selected history tab
+  // Filter transaction records by selected history tab + employee
   const filteredTxs = masterTransactions.filter(t => {
+    if (filterMasterId && t.masterId !== filterMasterId) return false;
     if (historyTab === "day") {
       return t.date === filterDay;
     } else if (historyTab === "range") {
@@ -611,45 +613,68 @@ export default function MasterSalaries({
               </div>
             </div>
 
-            {/* Filter controls sub-tabs details */}
-            {historyTab === "day" && (
-              <div className="flex items-center gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <Calendar className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-600 font-medium">Фильтр на день:</span>
-                <input
-                  type="date"
-                  value={filterDay}
-                  onChange={(e) => setFilterDay(e.target.value)}
-                  className="border border-slate-200 rounded px-2 py-1 bg-white"
-                />
-              </div>
-            )}
+            {/* Filter controls: employee + date */}
+            <div className="flex flex-wrap items-center gap-2.5 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <User className="h-4 w-4 text-slate-400 shrink-0" />
+              <span className="text-slate-600 font-medium">Сотрудник:</span>
+              <select
+                value={filterMasterId}
+                onChange={(e) => setFilterMasterId(e.target.value)}
+                className="border border-slate-200 rounded px-2 py-1 bg-white min-w-[10rem] font-semibold text-slate-700"
+                id="salaries-history-master-filter"
+              >
+                <option value="">Все сотрудники</option>
+                {[...employees]
+                  .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+                  .map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name}
+                    </option>
+                  ))}
+              </select>
 
-            {historyTab === "range" && (
-              <div className="flex flex-wrap items-center gap-2.5 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <Calendar className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-600">С даты:</span>
-                <input
-                  type="date"
-                  value={filterStart}
-                  onChange={(e) => setFilterStart(e.target.value)}
-                  className="border border-slate-200 rounded px-2 py-1 bg-white"
-                />
-                <span className="text-slate-500">По:</span>
-                <input
-                  type="date"
-                  value={filterEnd}
-                  onChange={(e) => setFilterEnd(e.target.value)}
-                  className="border border-slate-200 rounded px-2 py-1 bg-white"
-                />
-              </div>
-            )}
+              {historyTab === "day" && (
+                <>
+                  <Calendar className="h-4 w-4 text-slate-400 ml-1" />
+                  <span className="text-slate-600 font-medium">День:</span>
+                  <input
+                    type="date"
+                    value={filterDay}
+                    onChange={(e) => setFilterDay(e.target.value)}
+                    className="border border-slate-200 rounded px-2 py-1 bg-white"
+                  />
+                </>
+              )}
 
-            {historyTab === "month" && (
-              <div className="bg-slate-50 p-3 rounded-xl text-xs text-slate-500 font-medium font-sans">
-                Документируемые транзакции за текущий месяц: <strong className="text-slate-700">{new Date().toLocaleString("ru-RU", { month: "long", year: "numeric" })}</strong>.
-              </div>
-            )}
+              {historyTab === "range" && (
+                <>
+                  <Calendar className="h-4 w-4 text-slate-400 ml-1" />
+                  <span className="text-slate-600">С:</span>
+                  <input
+                    type="date"
+                    value={filterStart}
+                    onChange={(e) => setFilterStart(e.target.value)}
+                    className="border border-slate-200 rounded px-2 py-1 bg-white"
+                  />
+                  <span className="text-slate-500">По:</span>
+                  <input
+                    type="date"
+                    value={filterEnd}
+                    onChange={(e) => setFilterEnd(e.target.value)}
+                    className="border border-slate-200 rounded px-2 py-1 bg-white"
+                  />
+                </>
+              )}
+
+              {historyTab === "month" && (
+                <span className="text-slate-500 font-medium font-sans ml-1">
+                  Месяц:{" "}
+                  <strong className="text-slate-700">
+                    {new Date().toLocaleString("ru-RU", { month: "long", year: "numeric" })}
+                  </strong>
+                </span>
+              )}
+            </div>
 
             {/* Render items list */}
             {filteredTxs.length === 0 ? (

@@ -176,6 +176,7 @@ export const DEFAULT_APP_PREFERENCES = {
   showDeletedVisits: true,
   allowDeleteVisits: true,
   allowDeleteCertificates: true,
+  allowDeleteDebts: true,
   showVisitChangeHistory: true,
   allowMasterPayouts: true,
   allowAdminShiftEdits: true,
@@ -183,5 +184,5 @@ export const DEFAULT_APP_PREFERENCES = {
   keepOwnerUnlocked: false,
   autoLockDuration: 5,
   autoBackupEnabled: true,
-  autoBackupInterval: "weekly" as "daily" | "weekly",
+  autoBackupInterval: "weekly" as import("./utils/backupData").AutoBackupInterval,
 };

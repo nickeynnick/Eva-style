@@ -1,3 +1,5 @@
+import { APP_VERSION } from "./appVersion";
+
 export interface ChangelogEntry {
   version: string;
   title: string;
@@ -5,6 +7,39 @@ export interface ChangelogEntry {
 }
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.2",
+    title: "Ева-стиль 1.2.2",
+    sections: [
+      {
+        heading: "Данные и безопасность",
+        items: [
+          "В Windows-приложении журнал хранится в SQLite (Документы → Ева-стиль → Data), без лимита localStorage",
+          "Пароль владелицы — PBKDF2-хеш (старые пароли мигрируют при входе)",
+          "Автокопии: больше интервалов, ротация последних 10 файлов и уведомление об успехе или ошибке",
+          "Можно включить/выключить удаление долгов (как у сертификатов)",
+          "CrashLogs рядом с программой; в режиме разработчика — открыть папку",
+        ],
+      },
+      {
+        heading: "Интерфейс и учёт",
+        items: [
+          "Тёмная тема и обновлённый значок приложения",
+          "Фильтр по сотруднику в истории выплат и начислений",
+          "Персонализация сводного отчёта реально применяет порядок и скрытие блоков",
+          "Звук при запуске; подписи «Сохранить копию» / «Восстановить» в шапке",
+          "Режим разработчика: история изменений store, отладка, диагностика",
+        ],
+      },
+      {
+        heading: "Справка",
+        items: [
+          "Справка, «Что нового» и CHANGELOG приведены к одной версии",
+          "Актуальные описания экспорта/импорта, автокопий, SQLite и прав безопасности",
+        ],
+      },
+    ],
+  },
   {
     version: "1.2.1",
     title: "Ева-стиль 1.2.1",
@@ -82,5 +117,5 @@ export function getChangelogForVersion(version: string): ChangelogEntry | undefi
 }
 
 export function getLatestChangelogVersion(): string {
-  return APP_CHANGELOG[0]?.version ?? "1.2.1";
+  return APP_CHANGELOG[0]?.version ?? APP_VERSION;
 }

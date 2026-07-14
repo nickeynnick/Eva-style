@@ -1,13 +1,31 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Heart, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 type Phase = "show" | "hide" | "gone";
+
+/** Защита от двойного play() в React StrictMode. */
+let startupSoundStarted = false;
+
+function playStartupSound(): void {
+  if (startupSoundStarted) return;
+  startupSoundStarted = true;
+  try {
+    const audio = new Audio("/startup.mp3");
+    audio.volume = 0.85;
+    void audio.play().catch(() => {
+      // В Electron обычно разрешено через autoplay-policy.
+    });
+  } catch {
+    // ignore
+  }
+}
 
 export default function WelcomeOverlay() {
   const [phase, setPhase] = useState<Phase>("show");
 
   useEffect(() => {
+    playStartupSound();
     const hideTimer = setTimeout(() => setPhase("hide"), 2500);
     const goneTimer = setTimeout(() => setPhase("gone"), 3100);
     return () => {
@@ -21,7 +39,7 @@ export default function WelcomeOverlay() {
   return (
     <motion.div
       key="welcome-overlay"
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-white transition-[opacity,visibility] duration-600 ease-in-out ${
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-slate-950 transition-[opacity,visibility] duration-600 ease-in-out ${
         phase === "hide" ? "opacity-0 pointer-events-none invisible" : "opacity-100"
       }`}
       initial={false}
@@ -52,12 +70,12 @@ export default function WelcomeOverlay() {
           transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
         >
           <motion.div
-            className="h-20 w-20 bg-gradient-to-br from-rose-400 to-rose-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-rose-200 relative overflow-hidden"
+            className="h-20 w-20 rounded-3xl overflow-hidden shadow-2xl shadow-rose-200 border border-rose-100"
             initial={{ rotate: -10, scale: 0 }}
             animate={{ rotate: 0, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.2, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <Heart className="h-10 w-10 fill-white text-white" />
+            <img src="/icon.png" alt="Ева-стиль" className="h-full w-full object-cover" width={80} height={80} />
           </motion.div>
 
           <motion.div

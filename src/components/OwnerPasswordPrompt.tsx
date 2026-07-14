@@ -1,49 +1,66 @@
 import React, { useState } from "react";
 import { Lock, Unlock, KeyRound, Eye, EyeOff, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { motion } from "motion/react";
+import {
+  hashPassword,
+  needsPasswordRehash,
+  verifyPassword,
+} from "../utils/ownerPassword";
 
 interface OwnerPasswordPromptProps {
-  correctPasswordHash: string; // the actual saved password
+  /** Сохранённый хеш (или legacy plaintext до миграции). */
+  correctPasswordHash: string;
   onUnlock: () => void;
-  onResetSuccess: () => void; // drops password
+  onResetSuccess: () => void;
+  /** Пересохранить хеш после входа со старым plaintext. */
+  onPasswordRehash?: (hashed: string) => void;
 }
 
 export default function OwnerPasswordPrompt({
   correctPasswordHash,
   onUnlock,
   onResetSuccess,
+  onPasswordRehash,
 }: OwnerPasswordPromptProps) {
   const [passwordInput, setPasswordInput] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  
-  // Reset via secret question state
+  const [busy, setBusy] = useState(false);
+
   const [isResetMode, setIsResetMode] = useState(false);
   const [secretAnswerInput, setSecretAnswerInput] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetSuccessMsg, setResetSuccessMsg] = useState("");
 
-  const handleUnlockSubmit = (e: React.FormEvent) => {
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === correctPasswordHash) {
-      setError("");
+    setBusy(true);
+    setError("");
+    try {
+      const ok = await verifyPassword(passwordInput, correctPasswordHash);
+      if (!ok) {
+        setError("Неверный пароль. Пожалуйста, попробуйте еще раз.");
+        return;
+      }
+      if (needsPasswordRehash(correctPasswordHash) && onPasswordRehash) {
+        onPasswordRehash(await hashPassword(passwordInput));
+      }
       onUnlock();
-    } else {
-      setError("Неверный пароль. Пожалуйста, попробуйте еще раз.");
+    } catch {
+      setError("Не удалось проверить пароль. Попробуйте ещё раз.");
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleResetSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Case-insensitive, trimmed comparison to "Дымка" ("дымка", etc.)
     const cleanedAnswer = secretAnswerInput.trim().toLowerCase();
     if (cleanedAnswer === "дымка") {
       setResetError("");
       setResetSuccessMsg("Кодовое слово совпало! Пароль успешно сброшен.");
       setTimeout(() => {
-        // Trigger parent state update to empty the password
         onResetSuccess();
-        // Go back to standard screen (which will auto unlock since password is now empty)
         setIsResetMode(false);
         setSecretAnswerInput("");
         setResetSuccessMsg("");
@@ -62,8 +79,7 @@ export default function OwnerPasswordPrompt({
         className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-6 sm:p-8 space-y-6"
       >
         {!isResetMode ? (
-          // Password Input View
-          <form onSubmit={handleUnlockSubmit} className="space-y-6">
+          <form onSubmit={(e) => void handleUnlockSubmit(e)} className="space-y-6">
             <div className="flex flex-col items-center text-center space-y-2">
               <div className="p-3 bg-rose-50 text-rose-500 rounded-2xl border border-rose-100">
                 <Lock className="h-6 w-6" />
@@ -94,11 +110,13 @@ export default function OwnerPasswordPrompt({
                     className="w-full text-sm border border-slate-200 rounded-xl pl-10 pr-10 py-3 bg-slate-50/50 font-sans focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all"
                     required
                     autoFocus
+                    disabled={busy}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -117,10 +135,11 @@ export default function OwnerPasswordPrompt({
 
               <button
                 type="submit"
-                className="w-full bg-rose-500 hover:bg-rose-600 active:scale-[0.98] text-white py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2"
+                disabled={busy}
+                className="w-full bg-rose-500 hover:bg-rose-600 active:scale-[0.98] text-white py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-200 flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 <Unlock className="h-4 w-4" />
-                Разблокировать раздел
+                {busy ? "Проверка…" : "Разблокировать раздел"}
               </button>
             </div>
 
@@ -138,7 +157,6 @@ export default function OwnerPasswordPrompt({
             </div>
           </form>
         ) : (
-          // Reset Password View
           <form onSubmit={handleResetSubmit} className="space-y-6">
             <div className="flex flex-col items-center text-center space-y-2">
               <div className="p-3 bg-blue-50 text-blue-500 rounded-2xl border border-blue-100">
@@ -172,7 +190,7 @@ export default function OwnerPasswordPrompt({
                   required
                   autoFocus
                 />
-                
+
                 {resetError && (
                   <motion.p
                     initial={{ opacity: 0, height: 0 }}

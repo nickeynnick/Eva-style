@@ -35,17 +35,55 @@ export function serializeBackup(data: AppBackupPayload): string {
   );
 }
 
-export type AutoBackupInterval = "daily" | "weekly";
+export type AutoBackupInterval = "hourly" | "every6h" | "daily" | "weekly" | "monthly";
 
+/** Сколько файлов автобэкапа хранить в папке Backups. */
+export const AUTO_BACKUP_KEEP_LAST = 10;
+
+const INTERVAL_MS: Record<AutoBackupInterval, number> = {
+  hourly: 60 * 60 * 1000,
+  every6h: 6 * 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+  monthly: 30 * 24 * 60 * 60 * 1000,
+};
+
+function parseBackupTimestamp(lastBackupAt: string): Date {
+  if (lastBackupAt.includes("T")) return new Date(lastBackupAt);
+  return new Date(lastBackupAt + "T12:00:00");
+}
+
+/**
+ * Нужен ли автобэкап.
+ * @param lastBackupAt — ISO-дата/время или YYYY-MM-DD (legacy)
+ * @param now — момент проверки (для тестов)
+ */
 export function shouldRunAutoBackup(
   interval: AutoBackupInterval,
-  lastBackupDate: string | null,
-  todayStr: string
+  lastBackupAt: string | null,
+  now: Date | string = new Date()
 ): boolean {
-  if (!lastBackupDate) return true;
-  if (interval === "daily") return lastBackupDate !== todayStr;
-  const last = new Date(lastBackupDate + "T12:00:00");
-  const today = new Date(todayStr + "T12:00:00");
-  const diffDays = Math.floor((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
-  return diffDays >= 7;
+  if (!lastBackupAt) return true;
+  const nowDate = typeof now === "string" ? parseBackupTimestamp(now) : now;
+  const last = parseBackupTimestamp(lastBackupAt);
+  if (Number.isNaN(last.getTime()) || Number.isNaN(nowDate.getTime())) return true;
+
+  // Совместимость со старым daily/weekly по календарным дням
+  if (interval === "daily" && !lastBackupAt.includes("T") && typeof now === "string" && !now.includes("T")) {
+    return lastBackupAt !== now;
+  }
+  if (interval === "weekly" && !lastBackupAt.includes("T")) {
+    const diffDays = Math.floor((nowDate.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= 7;
+  }
+
+  const ms = INTERVAL_MS[interval] ?? INTERVAL_MS.daily;
+  return nowDate.getTime() - last.getTime() >= ms;
+}
+
+export function normalizeAutoBackupInterval(raw: unknown): AutoBackupInterval {
+  if (raw === "hourly" || raw === "every6h" || raw === "daily" || raw === "weekly" || raw === "monthly") {
+    return raw;
+  }
+  return "weekly";
 }

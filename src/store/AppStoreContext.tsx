@@ -12,9 +12,18 @@ import { ResetAppMode } from "../utils/resetAppData";
 import { AppStorePatch, AppStoreState, STORE_STORAGE_KEY } from "./schema";
 import { loadAppStore, persistAppStore, flushAppStore } from "./persistence";
 import { appStoreReducer } from "./reducer";
+import {
+  logStoreHistory,
+  summarizeStoreChange,
+  summarizeImportBackup,
+  summarizeReset,
+  summarizeMaterialPackaging,
+} from "../utils/devMode";
 
 interface AppStoreContextValue {
   state: AppStoreState;
+  /** Актуальный state без устаревшего замыкания (для функ. апдейтеров). */
+  getState: () => AppStoreState;
   patch: (payload: AppStorePatch) => void;
   setMaterialPackaging: (packaging: AppStoreState["materialPackaging"]) => void;
   importBackup: (payload: AppBackupPayload) => void;
@@ -23,6 +32,13 @@ interface AppStoreContextValue {
 }
 
 const AppStoreContext = createContext<AppStoreContextValue | null>(null);
+
+function emitHistoryLines(lines: string[], flush = false): void {
+  for (const line of lines) {
+    if (!line) continue;
+    logStoreHistory(line, undefined, { flush });
+  }
+}
 
 export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appStoreReducer, undefined, () => {
@@ -45,19 +61,65 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
+  const getState = useCallback(() => stateRef.current, []);
+
   const patch = useCallback((payload: AppStorePatch) => {
+    const prev = stateRef.current as unknown as Record<string, unknown>;
+    const { lines } = summarizeStoreChange(
+      prev,
+      payload as unknown as Record<string, unknown>
+    );
+    const destructive = lines.some(
+      (l) =>
+        /Удалён|удалено|Сброс|Восстановлена резервная/i.test(l) ||
+        l.startsWith("Удалён ")
+    );
+    emitHistoryLines(lines, destructive);
     dispatch({ type: "PATCH", payload });
   }, []);
 
   const setMaterialPackaging = useCallback((packaging: AppStoreState["materialPackaging"]) => {
+    const prevCount = Object.keys(stateRef.current.materialPackaging).length;
+    const nextCount = Object.keys(packaging).length;
+    logStoreHistory(summarizeMaterialPackaging(prevCount, nextCount));
     dispatch({ type: "SET_MATERIAL_PACKAGING", payload: packaging });
   }, []);
 
   const importBackup = useCallback((payload: AppBackupPayload) => {
+    const s = stateRef.current;
+    logStoreHistory(
+      summarizeImportBackup(
+        {
+          visits: s.visits.length,
+          employees: s.employees.length,
+          certificates: s.giftCertificates.length,
+        },
+        {
+          visits: Array.isArray(payload.visits) ? payload.visits.length : null,
+          employees: Array.isArray(payload.employees) ? payload.employees.length : null,
+          certificates: Array.isArray(payload.giftCertificates)
+            ? payload.giftCertificates.length
+            : null,
+        }
+      ),
+      undefined,
+      { flush: true, level: "warn" }
+    );
     dispatch({ type: "IMPORT_BACKUP", payload });
   }, []);
 
   const resetApp = useCallback((mode: ResetAppMode) => {
+    const s = stateRef.current;
+    logStoreHistory(
+      summarizeReset(mode, {
+        visits: s.visits.length,
+        employees: s.employees.length,
+        certificates: s.giftCertificates.length,
+        debts: s.debtRecords.length,
+      }),
+      undefined,
+      { flush: true, level: "warn" }
+    );
     dispatch({ type: "RESET", mode });
   }, []);
 
@@ -88,13 +150,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       state,
+      getState,
       patch,
       setMaterialPackaging,
       importBackup,
       resetApp,
       buildBackupPayload,
     }),
-    [state, patch, setMaterialPackaging, importBackup, resetApp, buildBackupPayload]
+    [state, getState, patch, setMaterialPackaging, importBackup, resetApp, buildBackupPayload]
   );
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;
@@ -110,16 +173,18 @@ export function useAppStore(): AppStoreContextValue {
 export function useStoreField<K extends keyof AppStoreState>(
   key: K
 ): [AppStoreState[K], (value: AppStoreState[K] | ((prev: AppStoreState[K]) => AppStoreState[K])) => void] {
-  const { state, patch } = useAppStore();
+  const { state, patch, getState } = useAppStore();
 
   const setValue = useCallback(
     (value: AppStoreState[K] | ((prev: AppStoreState[K]) => AppStoreState[K])) => {
-      const next = typeof value === "function"
-        ? (value as (prev: AppStoreState[K]) => AppStoreState[K])(state[key])
-        : value;
+      const current = getState();
+      const next =
+        typeof value === "function"
+          ? (value as (prev: AppStoreState[K]) => AppStoreState[K])(current[key])
+          : value;
       patch({ [key]: next } as AppStorePatch);
     },
-    [key, patch, state]
+    [key, patch, getState]
   );
 
   return [state[key], setValue];

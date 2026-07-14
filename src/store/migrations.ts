@@ -16,6 +16,7 @@ import {
 } from "../initialData";
 import { SolariumSession, SettingsRule } from "../types";
 import { getActiveSettingsForDate } from "../utils/settingsUtils";
+import { normalizeAutoBackupInterval } from "../utils/backupData";
 import {
   AppStoreState,
   AppPreferences,
@@ -158,6 +159,10 @@ export function migrateFromLegacyStorage(): AppStoreState {
       "eva_style_allow_delete_certificates",
       state.preferences.allowDeleteCertificates
     ),
+    allowDeleteDebts: readJson(
+      "eva_style_allow_delete_debts",
+      state.preferences.allowDeleteDebts ?? DEFAULT_APP_PREFERENCES.allowDeleteDebts
+    ),
     showVisitChangeHistory: readJson(
       "eva_style_show_visit_change_history",
       state.preferences.showVisitChangeHistory
@@ -174,9 +179,9 @@ export function migrateFromLegacyStorage(): AppStoreState {
     keepOwnerUnlocked: readJson("eva_style_keep_owner_unlocked", state.preferences.keepOwnerUnlocked),
     autoLockDuration: readJson("eva_style_auto_lock_duration", state.preferences.autoLockDuration),
     autoBackupEnabled: readJson("eva_style_auto_backup_enabled", state.preferences.autoBackupEnabled),
-    autoBackupInterval:
-      (localStorage.getItem("eva_style_auto_backup_interval") as AppPreferences["autoBackupInterval"]) ||
-      state.preferences.autoBackupInterval,
+    autoBackupInterval: normalizeAutoBackupInterval(
+      localStorage.getItem("eva_style_auto_backup_interval") || state.preferences.autoBackupInterval
+    ),
   };
 
   state.meta.ownerPassword = localStorage.getItem("eva_style_owner_password") || "";
@@ -193,6 +198,11 @@ export function migrateFromLegacyStorage(): AppStoreState {
 
 export function applyStoreMigrations(state: AppStoreState): AppStoreState {
   let next = { ...state, schemaVersion: STORE_SCHEMA_VERSION };
+
+  next.preferences = {
+    ...DEFAULT_APP_PREFERENCES,
+    ...next.preferences,
+  };
 
   next.materialConsumptions = migrateMaterialConsumptions(
     next.materialConsumptions as Record<string, unknown>

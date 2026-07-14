@@ -1,21 +1,30 @@
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { installFocusTracker } from "./utils/restoreAppFocus";
 import {
-  Heart,
   Download,
   Upload,
   Clock,
+  Bug,
 } from "lucide-react";
 import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
-import { serializeBackup, shouldRunAutoBackup } from "./utils/backupData";
+import { AUTO_BACKUP_KEEP_LAST, shouldRunAutoBackup, serializeBackup } from "./utils/backupData";
+import { runAutoBackupNow } from "./utils/autoBackupRunner";
 import { validateBackupImport } from "./utils/backupImport";
 import { showAppAlert } from "./utils/appDialog";
+import {
+  createDevModeClickGate,
+  isDevModeEnabled,
+  setDevModeEnabled,
+  subscribeDevMode,
+} from "./utils/devMode";
 import AppDialogHost from "./components/AppDialogHost";
 import GlobalSearch from "./components/GlobalSearch";
 import WelcomeOverlay from "./components/WelcomeOverlay";
 import ImportPreviewModal from "./components/ImportPreviewModal";
 import WhatsNewModal from "./components/WhatsNewModal";
+import ThemeToggle from "./components/ThemeToggle";
 import { getChangelogForVersion } from "./data/changelog";
+import { APP_VERSION } from "./data/appVersion";
 import {
   useAppStore,
   useStorePreferences,
@@ -33,8 +42,7 @@ const AdminSalaries = lazy(() => import("./components/AdminSalaries"));
 const OwnerSection = lazy(() => import("./components/OwnerSection"));
 const OwnerPasswordPrompt = lazy(() => import("./components/OwnerPasswordPrompt"));
 const InteractiveHelp = lazy(() => import("./components/InteractiveHelp"));
-
-const APP_VERSION = "1.2.0";
+const DevModePanel = lazy(() => import("./components/DevModePanel"));
 
 function TabFallback() {
   return (
@@ -45,7 +53,8 @@ function TabFallback() {
 }
 
 export default function App() {
-  const { state, patch, setMaterialPackaging, importBackup, resetApp, buildBackupPayload } = useAppStore();
+  const { state, patch, getState, setMaterialPackaging, importBackup, resetApp, buildBackupPayload } =
+    useAppStore();
   const { preferences, setPreference } = useStorePreferences();
   const { meta, setMeta } = useStoreMeta();
 
@@ -54,6 +63,27 @@ export default function App() {
   const [isOwnerUnlocked, setIsOwnerUnlocked] = useState(false);
   const [importPreview, setImportPreview] = useState<ReturnType<typeof validateBackupImport> | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [devModeEnabled, setDevModeEnabledState] = useState(() => isDevModeEnabled());
+  const [showDevPanel, setShowDevPanel] = useState(false);
+
+  const openDevPanel = useCallback(() => {
+    if (!isDevModeEnabled()) setDevModeEnabled(true);
+    setDevModeEnabledState(true);
+    setShowDevPanel(true);
+  }, []);
+
+  const onDevBadgeClick = useMemo(
+    () =>
+      createDevModeClickGate((newlyEnabled) => {
+        openDevPanel();
+        if (newlyEnabled) {
+          showAppAlert(
+            `Режим разработчика включён.\nОткрытие панели: Ctrl+Shift+D или клик по бейджу Dev.`
+          );
+        }
+      }),
+    [openDevPanel]
+  );
 
   const getTodayDateString = () => {
     const today = new Date();
@@ -70,6 +100,22 @@ export default function App() {
 
   useEffect(() => {
     installFocusTracker();
+  }, []);
+
+  useEffect(() => {
+    return subscribeDevMode(() => setDevModeEnabledState(isDevModeEnabled()));
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "d") {
+        if (!isDevModeEnabled()) return;
+        event.preventDefault();
+        setShowDevPanel((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -128,29 +174,46 @@ export default function App() {
   useEffect(() => {
     if (!preferences.autoBackupEnabled) return;
     const runAutoBackup = async () => {
-      const todayStr = getTodayDateString();
-      if (!shouldRunAutoBackup(preferences.autoBackupInterval, meta.lastAutoBackupDate, todayStr)) return;
-      const desktop = (window as { evaStyleDesktop?: { isDesktop?: boolean; autoSaveBackup?: (p: { fileName: string; content: string }) => Promise<{ success: boolean }> } }).evaStyleDesktop;
-      if (!desktop?.isDesktop || !desktop.autoSaveBackup) return;
-      const content = serializeBackup(backupPayloadRef.current());
-      const result = await desktop.autoSaveBackup({ fileName: `eva_style_auto_${todayStr}.json`, content });
-      if (result.success) setMeta({ lastAutoBackupDate: todayStr });
+      if (!shouldRunAutoBackup(preferences.autoBackupInterval, meta.lastAutoBackupDate, new Date())) {
+        return;
+      }
+      const result = await runAutoBackupNow(backupPayloadRef.current);
+      if (result.success) {
+        setMeta({ lastAutoBackupDate: new Date().toISOString() });
+        const folderHint = result.path
+          ? `\n\nФайл:\n${result.path}`
+          : "\n\nПапка: Документы → Ева-стиль → Backups";
+        const pruneHint =
+          result.pruned && result.pruned > 0
+            ? `\nУдалено устаревших автокопий: ${result.pruned} (храним последние ${AUTO_BACKUP_KEEP_LAST}).`
+            : `\nХранятся последние ${AUTO_BACKUP_KEEP_LAST} автокопий.`;
+        showAppAlert(`Автоматическая резервная копия сохранена.${folderHint}${pruneHint}`);
+      } else if (result.reason && !result.reason.includes("только в Windows")) {
+        showAppAlert(result.reason || "Не удалось сохранить автоматическую резервную копию.");
+      }
     };
     runAutoBackup();
-    const interval = setInterval(runAutoBackup, 60 * 60 * 1000);
+    const intervalMs =
+      preferences.autoBackupInterval === "hourly"
+        ? 15 * 60 * 1000
+        : preferences.autoBackupInterval === "every6h"
+          ? 30 * 60 * 1000
+          : 60 * 60 * 1000;
+    const interval = setInterval(runAutoBackup, intervalMs);
     return () => clearInterval(interval);
   }, [preferences.autoBackupEnabled, preferences.autoBackupInterval, meta.lastAutoBackupDate, setMeta]);
 
   const bindSetter = useCallback(
     <K extends keyof typeof state>(key: K) =>
       (value: (typeof state)[K] | ((prev: (typeof state)[K]) => (typeof state)[K])) => {
+        const current = getState();
         const next =
           typeof value === "function"
-            ? (value as (prev: (typeof state)[K]) => (typeof state)[K])(state[key])
+            ? (value as (prev: (typeof state)[K]) => (typeof state)[K])(current[key])
             : value;
         patch({ [key]: next } as AppStorePatch);
       },
-    [patch, state]
+    [patch, getState]
   );
 
   const handleResetApp = (mode: ResetAppMode) => {
@@ -221,13 +284,22 @@ export default function App() {
           }}
         />
       )}
+      {showDevPanel && (
+        <Suspense fallback={null}>
+          <DevModePanel open={showDevPanel} onClose={() => setShowDevPanel(false)} />
+        </Suspense>
+      )}
 
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm" id="app-header-bar">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-rose-50 border border-rose-100 rounded flex items-center justify-center text-rose-600">
-              <Heart className="h-4 w-4 fill-rose-600 text-rose-600" />
-            </div>
+            <img
+              src="/icon.png"
+              alt="Ева-стиль"
+              className="h-8 w-8 rounded object-cover border border-rose-100 shadow-sm"
+              width={32}
+              height={32}
+            />
             <div>
               <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-none">Ева-стиль</h1>
               <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase mt-0.5">Учетный пульт</p>
@@ -240,14 +312,40 @@ export default function App() {
                 <span>{dateStr} {timeStr}</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 text-[10px] py-1 px-2.5 rounded font-mono font-bold uppercase tracking-wider" id="db-status-indicator">
+            <button
+              type="button"
+              onClick={devModeEnabled ? () => setShowDevPanel(true) : onDevBadgeClick}
+              className={`flex items-center gap-1.5 border text-[10px] py-1 px-2.5 rounded font-mono font-bold uppercase tracking-wider transition-colors ${
+                devModeEnabled
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                  : "bg-slate-50 border-slate-200 text-slate-600"
+              }`}
+              id="db-status-indicator"
+              title={devModeEnabled ? "Режим разработчика (Ctrl+Shift+D)" : undefined}
+            >
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500" />
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    devModeEnabled ? "bg-emerald-400" : "bg-rose-400"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                    devModeEnabled ? "bg-emerald-500" : "bg-rose-500"
+                  }`}
+                />
               </span>
-              Store v{state.schemaVersion}
-            </div>
-            <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+              {devModeEnabled ? (
+                <>
+                  <Bug className="h-3 w-3" />
+                  Dev · Store v{state.schemaVersion}
+                </>
+              ) : (
+                <>Store v{state.schemaVersion}</>
+              )}
+            </button>
+            <ThemeToggle />
+            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
               <GlobalSearch
                 visits={state.visits}
                 giftCertificates={state.giftCertificates}
@@ -256,11 +354,21 @@ export default function App() {
                 onSelectCertificate={() => setActiveTab("certificates")}
                 onSelectDebt={() => setActiveTab("certificates")}
               />
-              <button onClick={handleExportBackup} className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50" title="Экспорт резервной копии">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50"
+                title="Сохранить резервную копию данных в файл"
+              >
                 <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Сохранить копию</span>
               </button>
-              <label className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-50 cursor-pointer" title="Импорт резервной копии">
+              <label
+                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 cursor-pointer"
+                title="Восстановить данные из файла резервной копии"
+              >
                 <Upload className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Восстановить</span>
                 <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
               </label>
             </div>
@@ -333,6 +441,7 @@ export default function App() {
                 selectedDate={selectedDateUi}
                 setSelectedDate={setSelectedDateUi}
                 allowDeleteCertificates={preferences.allowDeleteCertificates}
+                allowDeleteDebts={preferences.allowDeleteDebts}
                 settingsRules={state.settingsRules}
               />
             </Suspense>
@@ -409,6 +518,7 @@ export default function App() {
                     setMeta({ ownerPassword: "" });
                     setIsOwnerUnlocked(true);
                   }}
+                  onPasswordRehash={(hashed) => setMeta({ ownerPassword: hashed })}
                 />
               ) : (
                 <OwnerSection
@@ -447,6 +557,8 @@ export default function App() {
                   setAllowDeleteVisits={(v) => setPreference("allowDeleteVisits", v)}
                   allowDeleteCertificates={preferences.allowDeleteCertificates}
                   setAllowDeleteCertificates={(v) => setPreference("allowDeleteCertificates", v)}
+                  allowDeleteDebts={preferences.allowDeleteDebts}
+                  setAllowDeleteDebts={(v) => setPreference("allowDeleteDebts", v)}
                   showVisitChangeHistory={preferences.showVisitChangeHistory}
                   setShowVisitChangeHistory={(v) => setPreference("showVisitChangeHistory", v)}
                   allowMasterPayouts={preferences.allowMasterPayouts}

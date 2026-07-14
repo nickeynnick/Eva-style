@@ -24,6 +24,7 @@ export interface AppPreferences {
   showDeletedVisits: boolean;
   allowDeleteVisits: boolean;
   allowDeleteCertificates: boolean;
+  allowDeleteDebts: boolean;
   showVisitChangeHistory: boolean;
   allowMasterPayouts: boolean;
   allowAdminShiftEdits: boolean;

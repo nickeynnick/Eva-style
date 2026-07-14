@@ -34,6 +34,7 @@ import {
   getSolariumSessionAcquiring,
   getSolariumSessionTotal,
 } from "../utils/settingsUtils";
+import { getThemeChartColors, useThemeMode } from "../utils/theme";
 import { 
   Users, 
   TrendingUp, 
@@ -67,6 +68,8 @@ import {
 import { ResetAppMode } from "../utils/resetAppData";
 import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross } from "../utils/dailyFinanceUtils";
 import { AutoBackupInterval } from "../utils/backupData";
+import { AUTO_BACKUP_INTERVAL_OPTIONS } from "../utils/autoBackupRunner";
+import { hashPassword, verifyPassword } from "../utils/ownerPassword";
 import {
   exportAdminShiftsCsv,
   exportMasterPayrollCsv,
@@ -106,6 +109,8 @@ interface OwnerSectionProps {
   setAllowDeleteVisits: (val: boolean) => void;
   allowDeleteCertificates: boolean;
   setAllowDeleteCertificates: (val: boolean) => void;
+  allowDeleteDebts: boolean;
+  setAllowDeleteDebts: (val: boolean) => void;
   showVisitChangeHistory: boolean;
   setShowVisitChangeHistory: (val: boolean) => void;
   allowMasterPayouts: boolean;
@@ -158,6 +163,8 @@ export default function OwnerSection({
   setAllowDeleteVisits,
   allowDeleteCertificates,
   setAllowDeleteCertificates,
+  allowDeleteDebts,
+  setAllowDeleteDebts,
   showVisitChangeHistory,
   setShowVisitChangeHistory,
   allowMasterPayouts,
@@ -184,6 +191,8 @@ export default function OwnerSection({
   const [activeSubTab, setActiveSubTab] = useState<"employees" | "finance" | "settings" | "stats" | "security">("employees");
   const [confirmResetMode, setConfirmResetMode] = useState<ResetAppMode | null>(null);
   const [resetConfirmWord, setResetConfirmWord] = useState("");
+  const themeMode = useThemeMode();
+  const chartColors = useMemo(() => getThemeChartColors(), [themeMode]);
 
   const startReset = (mode: ResetAppMode) => {
     setConfirmResetMode(mode);
@@ -262,13 +271,13 @@ export default function OwnerSection({
     setDashboardBlocks(prev => prev.map(b => b.id === id ? { ...b, visible: !b.visible } : b));
   };
 
-  const getBlockStyle = (id: string) => {
-    const idx = dashboardBlocks.findIndex(b => b.id === id);
+  const getBlockStyle = (id: string): React.CSSProperties => {
+    const idx = dashboardBlocks.findIndex((b) => b.id === id);
     const block = dashboardBlocks[idx];
-    return {
-      order: idx !== -1 ? idx : undefined,
-      display: block && !block.visible ? "none" : undefined
-    };
+    if (!block || !block.visible) {
+      return { display: "none" };
+    }
+    return { order: idx + 1 };
   };
 
   // Local state for password forms in Settings Panel
@@ -1839,9 +1848,9 @@ export default function OwnerSection({
 
       {/* --- PANEL 2: FINANCE REPORT COMPREHENSIVE --- */}
       {activeSubTab === "finance" && (
-        <div className="flex flex-col space-y-8" id="subpanel-finance">
+        <div className="flex flex-col gap-8" id="subpanel-finance">
           {/* Period selector for comprehensive report */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4 font-sans max-w-3xl mx-auto w-full" style={{ order: -1 }} id="finance-period-selector-card">
+          <div className="bg-white p-6 rounded-2xl border border-slate-150 shadow-sm space-y-4 font-sans max-w-3xl mx-auto w-full" style={{ order: -10 }} id="finance-period-selector-card">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <span className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Sliders className="h-4 w-4 text-indigo-600" />
@@ -2031,25 +2040,25 @@ export default function OwnerSection({
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                       <XAxis 
                         dataKey="day" 
                         tickLine={false}
-                        axisLine={{ stroke: '#f1f5f9' }}
-                        tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }} 
+                        axisLine={{ stroke: chartColors.grid }}
+                        tick={{ fontSize: 10, fill: chartColors.tick, fontWeight: 'bold' }} 
                       />
                       <YAxis 
                         tickLine={false}
-                        axisLine={{ stroke: '#f1f5f9' }}
+                        axisLine={{ stroke: chartColors.grid }}
                         tickFormatter={(v) => `${v.toLocaleString()} ₽`}
-                        tick={{ fontSize: 10, fill: '#64748b' }} 
+                        tick={{ fontSize: 10, fill: chartColors.tick }} 
                       />
                       <Tooltip 
                         contentStyle={{ 
-                          backgroundColor: '#0f172a', 
-                          color: '#f8fafc',
+                          backgroundColor: chartColors.tooltipBg, 
+                          color: chartColors.tooltipText,
                           borderRadius: '16px', 
-                          border: 'none',
+                          border: `1px solid ${chartColors.tooltipBorder}`,
                           boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
                           fontSize: '11px',
                           padding: '12px'
@@ -2062,7 +2071,7 @@ export default function OwnerSection({
                         height={36} 
                         iconType="circle"
                         iconSize={8}
-                        wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                        wrapperStyle={{ fontSize: '11px', paddingTop: '10px', color: chartColors.tick }}
                       />
                       
                       {/* Beauty work and materials and solarium stacked bars */}
@@ -2080,7 +2089,7 @@ export default function OwnerSection({
                         fill="url(#colorRevenue)" 
                         name="Общая выручка"
                         activeDot={{ r: 6 }}
-                        dot={{ stroke: '#10b981', strokeWidth: 1, r: 2, fill: '#fff' }}
+                        dot={{ stroke: '#10b981', strokeWidth: 1, r: 2, fill: chartColors.dotFill }}
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -2090,7 +2099,7 @@ export default function OwnerSection({
           </div>
 
           {/* Распределение выручки между мастерами — новый визуальный блок */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" id="owner-master-revenue-distribution-card">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" id="owner-master-revenue-distribution-card" style={getBlockStyle("master-revenue")}>
             <div className="flex items-center justify-between cursor-pointer select-none pb-2 border-b border-slate-50" onClick={() => toggleBlock("master-revenue")}>
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-indigo-600 animate-pulse" />
@@ -2148,10 +2157,10 @@ export default function OwnerSection({
                           </Pie>
                           <Tooltip
                             contentStyle={{
-                              backgroundColor: '#0f172a',
-                              color: '#f8fafc',
+                              backgroundColor: chartColors.tooltipBg,
+                              color: chartColors.tooltipText,
                               borderRadius: '12px',
-                              border: 'none',
+                              border: `1px solid ${chartColors.tooltipBorder}`,
                               fontSize: '11px',
                               padding: '8px'
                             }}
@@ -2234,10 +2243,8 @@ export default function OwnerSection({
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Financial Ledger Aggregations (P&L Card) */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-3">
+          {/* Инструменты (всегда сверху после периода) + настраиваемые блоки P&L / расходов */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-3" style={{ order: 0 }} id="owner-csv-export-card">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <FileText className="h-4 w-4 text-rose-500" />
                   Экспорт в Excel (CSV)
@@ -2278,7 +2285,7 @@ export default function OwnerSection({
               </div>
 
               {periodComparison && (
-                <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-3">
+                <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-3" style={{ order: 0 }} id="owner-period-comparison-card">
                   <h3 className="text-sm font-bold text-slate-800">
                     Сравнение: {periodComparison.currLabel} vs {periodComparison.prevLabel} {finYear}
                   </h3>
@@ -2317,7 +2324,7 @@ export default function OwnerSection({
                 </div>
               )}
 
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4" id="owner-pnl-summary-card" style={getBlockStyle("pnl-summary")}>
                 <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => toggleBlock("pnl-summary")}>
                   <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-emerald-600" />
@@ -2436,11 +2443,9 @@ export default function OwnerSection({
                   </div>
                 )}
               </div>
-            </div>
 
             {/* Monthly bill adder panel */}
-            <div className="lg:col-span-1 space-y-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-add-outgoing-card" style={getBlockStyle("add-outgoing")}>
                 <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => toggleBlock("add-outgoing")}>
                   <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
                     <Plus className="h-5 w-5 text-red-500" />
@@ -2515,11 +2520,9 @@ export default function OwnerSection({
                   </form>
                 )}
               </div>
-            </div>
-          </div>
 
           {/* List of bills recorded this month */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-recorded-bills-card" style={getBlockStyle("recorded-bills-list")}>
             <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => toggleBlock("recorded-bills-list")}>
               <h3 className="text-md font-bold text-slate-800">Перечень накладных расходов ({selectedPeriodTitle})</h3>
               <button type="button" className="text-slate-400 hover:text-slate-600 focus:outline-none">
@@ -2562,7 +2565,7 @@ export default function OwnerSection({
           </div>
 
           {/* BIG DAILY COMPREHENSIVE FINANCIAL SUMMARY TABULATION */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-daily-ledger-card" style={getBlockStyle("detailed-daily-ledger")}>
             <div className="flex items-center justify-between cursor-pointer select-none border-b border-slate-100 pb-4" onClick={() => toggleBlock("detailed-daily-ledger")}>
               <div>
                 <h3 className="text-md font-bold text-slate-800">Детальный ежедневный сводный отчет</h3>
@@ -2674,7 +2677,7 @@ export default function OwnerSection({
           </div>
 
           {/* BIG YEARLY COMPREHENSIVE FINANCIAL SUMMARY TABULATION */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-yearly-ledger-card" style={getBlockStyle("detailed-yearly-ledger")}>
             <div className="flex items-center justify-between cursor-pointer select-none border-b border-slate-100 pb-4" onClick={() => toggleBlock("detailed-yearly-ledger")}>
               <div>
                 <h3 className="text-md font-bold text-slate-800 font-sans">Детальный сводный отчет за год ({finYear})</h3>
@@ -3879,8 +3882,15 @@ export default function OwnerSection({
             {!collapsedBlocks["dashboard-layout-settings"] && (
               <div className="space-y-4 font-sans">
                 <p className="text-xs text-slate-400">
-                  Владелица салона может скрыть ненужные блоки отчетов или изменить очередность их отображения на вкладке «Финансы». Настройки сохраняются на этом устройстве.
+                  Скрывайте ненужные блоки или меняйте порядок — изменения сразу видны на вкладке «Сводный отчет». Настройки сохраняются на этом устройстве.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab("finance")}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+                >
+                  Открыть вкладку «Сводный отчет»
+                </button>
 
                 <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-slate-50/50">
                   {dashboardBlocks.map((block, idx) => {
@@ -4061,6 +4071,30 @@ export default function OwnerSection({
                 </button>
               </div>
 
+              {/* Toggle: удаление долгов */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5 pr-2">
+                  <span className="text-xs font-bold text-slate-700 block text-left">Разрешить удаление долгов</span>
+                  <span className="text-[11px] text-slate-400 block font-sans text-left">
+                    Кнопки удаления открытых и закрытых долгов во вкладке «Сертификаты» (настраивается только владелицей)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAllowDeleteDebts(!allowDeleteDebts)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    allowDeleteDebts ? "bg-rose-500" : "bg-slate-300"
+                  }`}
+                  id="toggle-allow-delete-debts-sec"
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      allowDeleteDebts ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Toggle 3: Отображение истории изменения журнала посещений */}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="space-y-0.5 pr-2">
@@ -4185,20 +4219,26 @@ export default function OwnerSection({
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (!secNewPassword) {
-                      setSecError("Пожалуйста, введите пароль.");
-                      return;
-                    }
-                    if (secNewPassword !== secConfirmPassword) {
-                      setSecError("Пароли не совпадают.");
-                      return;
-                    }
-                    setOwnerPassword(secNewPassword);
-                    setSecNewPassword("");
-                    setSecConfirmPassword("");
-                    setSecError("");
-                    setSecSuccess("Пароль успешно установлен и активирован!");
-                    setTimeout(() => setSecSuccess(""), 4000);
+                    void (async () => {
+                      if (!secNewPassword) {
+                        setSecError("Пожалуйста, введите пароль.");
+                        return;
+                      }
+                      if (secNewPassword !== secConfirmPassword) {
+                        setSecError("Пароли не совпадают.");
+                        return;
+                      }
+                      try {
+                        setOwnerPassword(await hashPassword(secNewPassword));
+                        setSecNewPassword("");
+                        setSecConfirmPassword("");
+                        setSecError("");
+                        setSecSuccess("Пароль успешно установлен и активирован!");
+                        setTimeout(() => setSecSuccess(""), 4000);
+                      } catch {
+                        setSecError("Не удалось сохранить пароль. Попробуйте ещё раз.");
+                      }
+                    })();
                   }}
                   className="space-y-4 font-sans text-xs"
                 >
@@ -4252,25 +4292,32 @@ export default function OwnerSection({
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        if (secCurrentPassword !== ownerPassword) {
-                          setSecError("Текущий пароль введен неверно.");
-                          return;
-                        }
-                        if (!secNewPassword) {
-                          setSecError("Пожалуйста, введите новый пароль.");
-                          return;
-                        }
-                        if (secNewPassword !== secConfirmPassword) {
-                          setSecError("Новые пароли не совпадают.");
-                          return;
-                        }
-                        setOwnerPassword(secNewPassword);
-                        setSecNewPassword("");
-                        setSecConfirmPassword("");
-                        setSecCurrentPassword("");
-                        setSecError("");
-                        setSecSuccess("Пароль успешно изменен!");
-                        setTimeout(() => setSecSuccess(""), 4000);
+                        void (async () => {
+                          const ok = await verifyPassword(secCurrentPassword, ownerPassword);
+                          if (!ok) {
+                            setSecError("Текущий пароль введен неверно.");
+                            return;
+                          }
+                          if (!secNewPassword) {
+                            setSecError("Пожалуйста, введите новый пароль.");
+                            return;
+                          }
+                          if (secNewPassword !== secConfirmPassword) {
+                            setSecError("Новые пароли не совпадают.");
+                            return;
+                          }
+                          try {
+                            setOwnerPassword(await hashPassword(secNewPassword));
+                            setSecNewPassword("");
+                            setSecConfirmPassword("");
+                            setSecCurrentPassword("");
+                            setSecError("");
+                            setSecSuccess("Пароль успешно изменен!");
+                            setTimeout(() => setSecSuccess(""), 4000);
+                          } catch {
+                            setSecError("Не удалось сохранить пароль. Попробуйте ещё раз.");
+                          }
+                        })();
                       }}
                       className="space-y-3 pt-3"
                     >
@@ -4329,15 +4376,18 @@ export default function OwnerSection({
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        if (secCurrentPassword !== ownerPassword) {
-                          setSecError("Текущий пароль введен неверно.");
-                          return;
-                        }
-                        setOwnerPassword("");
-                        setSecCurrentPassword("");
-                        setSecError("");
-                        setSecSuccess("Защита успешно отключена!");
-                        setTimeout(() => setSecSuccess(""), 4000);
+                        void (async () => {
+                          const ok = await verifyPassword(secCurrentPassword, ownerPassword);
+                          if (!ok) {
+                            setSecError("Текущий пароль введен неверно.");
+                            return;
+                          }
+                          setOwnerPassword("");
+                          setSecCurrentPassword("");
+                          setSecError("");
+                          setSecSuccess("Защита успешно отключена!");
+                          setTimeout(() => setSecSuccess(""), 4000);
+                        })();
                       }}
                       className="space-y-3 pt-4"
                     >
@@ -4470,7 +4520,7 @@ export default function OwnerSection({
               {!collapsedBlocks["security-auto-backup"] && (
                 <>
                   <p className="text-xs text-slate-400 font-sans">
-                    Программа автоматически сохраняет JSON-резервную копию в папку «Документы → Ева-стиль → Backups» (только в Windows-приложении).
+                    Программа автоматически сохраняет JSON-резервную копию в папку «Документы → Ева-стиль → Backups» (только в Windows-приложении). Хранятся последние 10 автокопий — более старые удаляются.
                   </p>
                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="space-y-0.5 pr-2">
@@ -4501,8 +4551,11 @@ export default function OwnerSection({
                         onChange={(e) => setAutoBackupInterval(e.target.value as AutoBackupInterval)}
                         className="text-xs font-bold border border-emerald-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       >
-                        <option value="daily">Раз в день</option>
-                        <option value="weekly">Раз в неделю</option>
+                        {AUTO_BACKUP_INTERVAL_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
                       {lastAutoBackupDate && (
                         <span className="text-[11px] text-slate-500">

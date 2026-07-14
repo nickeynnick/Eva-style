@@ -7,5 +7,6 @@ temp_extract/
 .env
 .env.local
 *.log
+CrashLogs/
 .DS_Store
 Thumbs.db

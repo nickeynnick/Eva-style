@@ -13,8 +13,11 @@ import {
   Users,
   ShieldCheck,
   LayoutGrid,
+  Sparkles,
 } from "lucide-react";
 import { faqs, HELP_CATEGORIES, CATEGORY_LABELS, HelpCategory } from "../data/helpContent";
+import { APP_CHANGELOG } from "../data/changelog";
+import { APP_VERSION } from "../data/appVersion";
 
 const CATEGORY_ICONS: Record<HelpCategory | "all", React.ComponentType<{ className?: string }>> = {
   all: BookOpen,
@@ -81,6 +84,40 @@ export default function InteractiveHelp() {
           <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
         </div>
       </div>
+
+      {APP_CHANGELOG[0] && (
+        <div
+          className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-3"
+          id="help-whats-new"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-rose-500" />
+            <h3 className="text-sm font-extrabold text-slate-800">
+              Что нового · версия {APP_VERSION}
+            </h3>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Тот же список, что в окне при обновлении. Полная история — в CHANGELOG проекта.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {APP_CHANGELOG[0].sections.map((section) => (
+              <div key={section.heading} className="space-y-1.5">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {section.heading}
+                </h4>
+                <ul className="space-y-1">
+                  {section.items.map((item) => (
+                    <li key={item} className="text-xs text-slate-700 flex gap-2 leading-snug">
+                      <span className="text-rose-400 shrink-0">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start" id="help-grid-container">
         <div className="lg:col-span-3 space-y-2" id="help-navigation-sidebar">

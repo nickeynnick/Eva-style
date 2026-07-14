@@ -32,6 +32,7 @@ interface CertificatesAndDebtsProps {
   selectedDate: string;
   setSelectedDate: (date: string) => void;
   allowDeleteCertificates?: boolean;
+  allowDeleteDebts?: boolean;
   settingsRules: SettingsRule[];
 }
 
@@ -43,6 +44,7 @@ export default function CertificatesAndDebts({
   selectedDate,
   setSelectedDate,
   allowDeleteCertificates = false,
+  allowDeleteDebts = false,
   settingsRules,
 }: CertificatesAndDebtsProps) {
   const [certNominal, setCertNominal] = useState<number | "">("");
@@ -58,6 +60,7 @@ export default function CertificatesAndDebts({
   const [payComment, setPayComment] = useState("");
   const [payDate, setPayDate] = useState(selectedDate);
   const [confirmDeleteCertId, setConfirmDeleteCertId] = useState<string | null>(null);
+  const [confirmDeleteDebtId, setConfirmDeleteDebtId] = useState<string | null>(null);
 
   React.useEffect(() => {
     setCertSoldDate(selectedDate);
@@ -166,6 +169,61 @@ export default function CertificatesAndDebts({
       </div>
     </td>
   );
+
+  const handleDeleteDebt = async (id: string) => {
+    const debt = debtRecords.find((d) => d.id === id);
+    if (!debt) {
+      setConfirmDeleteDebtId(null);
+      return;
+    }
+    const bits: string[] = [];
+    if (!debt.isClosed && debt.remainingAmount > 0) {
+      bits.push(`остаток ${debt.remainingAmount.toLocaleString("ru-RU")} ₽`);
+    }
+    if (debt.payments.length > 0) {
+      bits.push(`${debt.payments.length} платеж(ей)`);
+    }
+    const detail = bits.length > 0 ? ` (${bits.join(", ")})` : "";
+    const ok = await showAppConfirmAsync(
+      `Удалить долг клиента «${debt.clientName}»${detail} безвозвратно?`
+    );
+    if (!ok) {
+      setConfirmDeleteDebtId(null);
+      return;
+    }
+    setDebtRecords((prev) => prev.filter((d) => d.id !== id));
+    if (payDebtId === id) setPayDebtId("");
+    setConfirmDeleteDebtId(null);
+  };
+
+  const renderDebtDeleteAction = (d: DebtRecord) => {
+    if (!allowDeleteDebts) return null;
+    return confirmDeleteDebtId === d.id ? (
+      <button
+        type="button"
+        onClick={() => {
+          void handleDeleteDebt(d.id);
+        }}
+        className="text-[9px] font-bold text-white bg-red-600 hover:bg-red-700 flex items-center gap-0.5 px-1.5 py-0.5 rounded animate-pulse"
+      >
+        <Trash2 className="h-3 w-3" /> Точно?
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={() => {
+          setConfirmDeleteDebtId(d.id);
+          setTimeout(() => {
+            setConfirmDeleteDebtId((current) => (current === d.id ? null : current));
+          }, 4000);
+        }}
+        className="text-[9px] font-bold text-red-600 hover:text-red-700 flex items-center gap-0.5"
+        title="Удалить долг"
+      >
+        <Trash2 className="h-3 w-3" /> Удалить
+      </button>
+    );
+  };
 
   const handlePayDebt = (e: React.FormEvent) => {
     e.preventDefault();
@@ -549,9 +607,10 @@ export default function CertificatesAndDebts({
                     </div>
                   )}
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end gap-1.5">
                   <div className="text-sm font-mono font-bold text-amber-700">{d.remainingAmount.toLocaleString()} ₽</div>
                   <div className="text-[9px] text-slate-400">остаток</div>
+                  {renderDebtDeleteAction(d)}
                 </div>
               </div>
             ))}
@@ -566,9 +625,12 @@ export default function CertificatesAndDebts({
           </summary>
           <div className="mt-2 space-y-1 text-[10px] text-slate-500">
             {closedDebts.slice(0, 20).map((d) => (
-              <div key={d.id} className="flex justify-between py-1 border-b border-slate-100">
+              <div key={d.id} className="flex justify-between items-center gap-2 py-1 border-b border-slate-100">
                 <span>{d.clientName}</span>
-                <span className="font-mono">{d.originalAmount.toLocaleString()} ₽ — погашено</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono">{d.originalAmount.toLocaleString()} ₽ — погашено</span>
+                  {renderDebtDeleteAction(d)}
+                </div>
               </div>
             ))}
           </div>

@@ -2,7 +2,7 @@
   "name": "eva-style",
   "productName": "Ева-стиль",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Программа для управления салоном красоты «Ева-стиль»",
   "author": "Ева-стиль",
   "type": "module",
@@ -29,7 +29,8 @@
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
@@ -60,7 +61,13 @@
       "dist/**/*",
       "electron/**/*",
       "build/icon.png",
-      "build/icon.ico"
+      "build/icon.ico",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
+      "node_modules/sql.js/dist/sql-wasm.js",
+      "node_modules/sql.js/package.json"
+    ],
+    "asarUnpack": [
+      "**/sql.js/dist/sql-wasm.wasm"
     ],
     "win": {
       "target": [
