@@ -1,5 +1,5 @@
 import { showAppAlert } from "./appDialog";
-import { restoreAppFocus } from "./restoreAppFocus";
+import { printHtmlDocument } from "./printHtml";
 
 export interface ShiftSummaryData {
   dateLabel: string;
@@ -57,35 +57,13 @@ ${data.newDebts > 0 ? row("Новые долги", `${data.newDebts.toLocaleStri
 ${row("Материалы (услуги + солярий)", `${data.materialsTotal.toLocaleString("ru-RU")} ₽`)}
 </table>
 <p class="footer">Сформировано программой «Ева-стиль» · ${new Date().toLocaleString("ru-RU")}</p>
-<script>window.onload=function(){setTimeout(function(){window.print();},600);};</script>
 </body></html>`;
 }
 
 export function printShiftSummary(data: ShiftSummaryData): void {
-  const html = buildShiftSummaryHtml(data);
-
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) {
-    iframe.remove();
+  try {
+    printHtmlDocument(buildShiftSummaryHtml(data));
+  } catch {
     showAppAlert("Не удалось подготовить документ для печати.");
-    return;
   }
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  setTimeout(() => {
-    iframe.remove();
-    restoreAppFocus();
-  }, 5000);
 }

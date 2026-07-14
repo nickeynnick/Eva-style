@@ -1,18 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Area,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell
-} from "recharts";
+import React, { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { 
   Employee, 
   Position, 
@@ -79,7 +65,22 @@ import {
 import { APP_VERSION } from "../data/appVersion";
 import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
 import { showAppAlert } from "../utils/appDialog";
-import { restoreAppFocus } from "../utils/restoreAppFocus";
+import { printHtmlDocument } from "../utils/printHtml";
+
+const LazyRevenueDayChart = lazy(() =>
+  import("./OwnerFinanceCharts").then((m) => ({ default: m.RevenueDayChart }))
+);
+const LazyMasterRevenueDistribution = lazy(() =>
+  import("./OwnerFinanceCharts").then((m) => ({ default: m.MasterRevenueDistribution }))
+);
+
+function FinanceChartFallback() {
+  return (
+    <div className="flex items-center justify-center py-12 text-xs text-slate-400 font-sans">
+      Загрузка диаграммы…
+    </div>
+  );
+}
 
 interface OwnerSectionProps {
   employees: Employee[];
@@ -220,8 +221,13 @@ export default function OwnerSection({
     onResetApp?.(mode);
   };
 
-  // Collapsed states for blocks
-  const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
+  // Collapsed states for blocks — тяжёлые блоки финансов свёрнуты, чтобы не монтировать всё сразу
+  const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({
+    "revenue-chart": true,
+    "master-revenue": true,
+    "detailed-daily-ledger": true,
+    "detailed-yearly-ledger": true,
+  });
 
   // Customizable Dashboard Block Config (visibilities & sequence)
   const [dashboardBlocks, setDashboardBlocks] = useState<{ id: string; name: string; visible: boolean }[]>(() => {
@@ -284,6 +290,13 @@ export default function OwnerSection({
       return { display: "none" };
     }
     return { order: idx + 1 };
+  };
+
+  /** Контент блока финансов монтируем только если блок видим и развёрнут. */
+  const isFinanceBlockOpen = (id: string) => {
+    const block = dashboardBlocks.find((b) => b.id === id);
+    if (!block?.visible) return false;
+    return !collapsedBlocks[id];
   };
 
   // Local state for password forms in Settings Panel
@@ -745,20 +758,12 @@ export default function OwnerSection({
   ]);
 
   const handleGeneratePdfReport = () => {
-    // 1. Create a quiet hidden iframe
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-
-    // 2. Prepare HTML output
-    const masterRows = masterRevenueData.length === 0 
-      ? '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">Нет данных по мастерам за выбранный период</td></tr>'
-      : masterRevenueData.map(m => `
+    const masterRows =
+      masterRevenueData.length === 0
+        ? '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">Нет данных по мастерам за выбранный период</td></tr>'
+        : masterRevenueData
+            .map(
+              (m) => `
         <tr>
           <td><strong style="color: #0f172a;">${m.name}</strong></td>
           <td><span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #991b1b;">${m.position}</span></td>
@@ -767,7 +772,9 @@ export default function OwnerSection({
           <td style="text-align: right; font-family: monospace; font-weight: 600; color: #4f46e5;">${m.materials.toLocaleString()} ₽</td>
           <td style="text-align: right; font-family: monospace; font-weight: 700; color: #1e293b;">${m.total.toLocaleString()} ₽</td>
         </tr>
-      `).join('');
+      `
+            )
+            .join("");
 
     const isPositive = totalMaterialsRevenue - materialsPurchaseExpenses >= 0;
     const balanceSign = isPositive ? "+" : "";
@@ -1076,31 +1083,11 @@ export default function OwnerSection({
             <div>Подпись владелицы салона</div>
           </div>
         </div>
-
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.print();
-            }, 600);
-          }
-        </script>
       </body>
       </html>
     `;
 
-    // 3. Populate iframe document & perform print
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(reportHtml);
-      doc.close();
-    }
-
-    // 4. Clean up after print menu dialog finishes/cancels to avoid DOM bloat
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-      restoreAppFocus();
-    }, 5000);
+    printHtmlDocument(reportHtml);
   };
 
   const handleExportPeriodReport = () => {
@@ -1132,7 +1119,10 @@ export default function OwnerSection({
         total: m.total,
       }))
     );
-    handleGeneratePdfReport();
+    // После CSV даём завершить download — иначе Electron часто отменяет print
+    window.setTimeout(() => {
+      handleGeneratePdfReport();
+    }, 450);
   };
 
   const masterRevenueData = useMemo(() => {
@@ -2095,7 +2085,7 @@ export default function OwnerSection({
               </button>
             </div>
 
-            {!collapsedBlocks["revenue-chart"] && (
+            {isFinanceBlockOpen("revenue-chart") && (
               <>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
                   <p className="text-xs text-slate-400 font-sans">
@@ -2114,72 +2104,9 @@ export default function OwnerSection({
                   </div>
                 </div>
 
-                <div className="h-[360px] w-full mt-4 font-sans min-w-0" id="revenue-chart-viewport">
-                  <ResponsiveContainer width="100%" height={320}>
-                    <ComposedChart
-                      data={dailyChartData}
-                      margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
-                      <XAxis 
-                        dataKey="day" 
-                        tickLine={false}
-                        axisLine={{ stroke: chartColors.grid }}
-                        tick={{ fontSize: 10, fill: chartColors.tick, fontWeight: 'bold' }} 
-                      />
-                      <YAxis 
-                        tickLine={false}
-                        axisLine={{ stroke: chartColors.grid }}
-                        tickFormatter={(v) => `${v.toLocaleString()} ₽`}
-                        tick={{ fontSize: 10, fill: chartColors.tick }} 
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: chartColors.tooltipBg, 
-                          color: chartColors.tooltipText,
-                          borderRadius: '16px', 
-                          border: `1px solid ${chartColors.tooltipBorder}`,
-                          boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
-                          fontSize: '11px',
-                          padding: '12px'
-                        }}
-                        formatter={(value: any, name: any) => [`${value.toLocaleString()} ₽`, name]}
-                        labelFormatter={(label) => `Число месяца: ${label}`}
-                      />
-                      <Legend 
-                        verticalAlign="bottom" 
-                        height={36} 
-                        iconType="circle"
-                        iconSize={8}
-                        wrapperStyle={{ fontSize: '11px', paddingTop: '10px', color: chartColors.tick }}
-                      />
-                      
-                      {/* Beauty work and materials and solarium stacked bars */}
-                      <Bar dataKey="Услуги" stackId="revenue" fill="#6366f1" radius={[0, 0, 0, 0]} barSize={14} name="Услуги красоты" />
-                      <Bar dataKey="Материалы" stackId="revenue" fill="#ec4899" radius={[0, 0, 0, 0]} barSize={14} name="Материалы визитов" />
-                      <Bar dataKey="Солярий" stackId="revenue" fill="#eab308" radius={[3, 3, 0, 0]} barSize={14} name="Сеансы солярия" />
-                      
-                      {/* Dynamic outline trend area */}
-                      <Area 
-                        type="monotone" 
-                        dataKey="Выручка" 
-                        stroke="#10b981" 
-                        strokeWidth={2.5} 
-                        fillOpacity={1} 
-                        fill="url(#colorRevenue)" 
-                        name="Общая выручка"
-                        activeDot={{ r: 6 }}
-                        dot={{ stroke: '#10b981', strokeWidth: 1, r: 2, fill: chartColors.dotFill }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
+                <Suspense fallback={<FinanceChartFallback />}>
+                  <LazyRevenueDayChart data={dailyChartData} chartColors={chartColors} />
+                </Suspense>
               </>
             )}
           </div>
@@ -2198,133 +2125,15 @@ export default function OwnerSection({
               </button>
             </div>
 
-            {!collapsedBlocks["master-revenue"] && (
+            {isFinanceBlockOpen("master-revenue") && (
               <>
                 <p className="text-xs text-slate-400 font-sans">
                   Визуализация долей выручки от услуг и материалов, сгенерированных каждым мастером за выбранный период (всего за услуги: {(masterRevenueData.reduce((s, i) => s + i.total, 0)).toLocaleString()} ₽)
                 </p>
 
-                {masterRevenueData.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-xs font-sans">
-                    Нет завершенных визитов или данных по мастерам за выбранный месяц
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                    {/* Donut Chart Section */}
-                    <div className="md:col-span-5 flex justify-center">
-                      <div className="h-[220px] w-[240px] relative flex justify-center items-center">
-                        <RechartsPieChart width={240} height={220}>
-                          <Pie
-                            data={masterRevenueData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={85}
-                            paddingAngle={3}
-                            dataKey="total"
-                          >
-                            {masterRevenueData.map((entry, index) => {
-                              const MASTER_COLORS = [
-                                "#6366f1", // indigo
-                                "#ec4899", // pink
-                                "#f59e0b", // amber
-                                "#14b8a6", // teal
-                                "#10b981", // emerald
-                                "#f97316", // orange
-                                "#06b6d4", // cyan
-                                "#d946ef", // fuchsia
-                                "#8b5cf6", // violet
-                                "#ef4444", // red
-                              ];
-                              return (
-                                <Cell key={`cell-${index}`} fill={MASTER_COLORS[index % MASTER_COLORS.length]} />
-                              );
-                            })}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: chartColors.tooltipBg,
-                              color: chartColors.tooltipText,
-                              borderRadius: '12px',
-                              border: `1px solid ${chartColors.tooltipBorder}`,
-                              fontSize: '11px',
-                              padding: '8px'
-                            }}
-                            formatter={(value: any, name: any) => [`${value.toLocaleString()} ₽`, name]}
-                          />
-                        </RechartsPieChart>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-sans font-black">Всего услуг</span>
-                          <span className="text-md font-black text-slate-800 font-mono font-bold">
-                            {(masterRevenueData.reduce((s, i) => s + i.total, 0)).toLocaleString()} ₽
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rankings and info cards list */}
-                    <div className="md:col-span-7 space-y-4">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-100 font-sans">
-                        Рейтинг и доли выработки мастеров
-                      </h4>
-                      <div className="space-y-3 font-sans">
-                        {masterRevenueData.map((item, idx) => {
-                          const MASTER_COLORS = [
-                            "#6366f1", // indigo
-                            "#ec4899", // pink
-                            "#f59e0b", // amber
-                            "#14b8a6", // teal
-                            "#10b981", // emerald
-                            "#f97316", // orange
-                            "#06b6d4", // cyan
-                            "#d946ef", // fuchsia
-                            "#8b5cf6", // violet
-                            "#ef4444", // red
-                          ];
-                          const barColor = MASTER_COLORS[idx % MASTER_COLORS.length];
-                          return (
-                            <div key={item.id} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs font-semibold">
-                                <div className="flex items-center gap-1.5">
-                                  <span 
-                                    className="h-2.5 w-2.5 rounded-full inline-block" 
-                                    style={{ backgroundColor: barColor }} 
-                                  />
-                                  <span className="text-slate-800 font-bold">{item.name}</span>
-                                  <span className="text-[9px] text-slate-400 font-bold bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md">
-                                    {item.position}
-                                  </span>
-                                </div>
-                                <div className="text-right font-mono text-slate-600">
-                                  <span className="text-slate-800 font-black">{item.total.toLocaleString()} ₽</span>
-                                  <span className="text-slate-400 ml-1.5 font-bold">({item.percentage}%)</span>
-                                </div>
-                              </div>
-                              
-                              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                                <div 
-                                  className="h-full rounded-full transition-all duration-500" 
-                                  style={{ 
-                                    width: `${item.percentage}%`, 
-                                    backgroundColor: barColor 
-                                  }} 
-                                />
-                              </div>
-
-                              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pl-4">
-                                <span>Визитов: <strong className="text-slate-600 font-bold">{item.count}</strong></span>
-                                <span className="flex gap-2">
-                                  <span>Работа: <strong className="text-slate-600 font-bold">{item.work.toLocaleString()} ₽</strong></span>
-                                  <span>Расходники: <strong className="text-indigo-600 font-bold">{item.materials.toLocaleString()} ₽</strong></span>
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <Suspense fallback={<FinanceChartFallback />}>
+                  <LazyMasterRevenueDistribution data={masterRevenueData} chartColors={chartColors} />
+                </Suspense>
               </>
             )}
           </div>
@@ -2423,7 +2232,7 @@ export default function OwnerSection({
                   </button>
                 </div>
 
-                {!collapsedBlocks["pnl-summary"] && (
+                {isFinanceBlockOpen("pnl-summary") && (
                   <div className="space-y-4 pt-2">
                     {/* Revenue section */}
                     <div className="space-y-2">
@@ -2544,7 +2353,7 @@ export default function OwnerSection({
                   </button>
                 </div>
 
-                {!collapsedBlocks["add-outgoing"] && (
+                {isFinanceBlockOpen("add-outgoing") && (
                   <form onSubmit={handleAddBill} className="space-y-4 font-sans">
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Категория платежа</label>
@@ -2618,7 +2427,7 @@ export default function OwnerSection({
               </button>
             </div>
 
-            {!collapsedBlocks["recorded-bills-list"] && (
+            {isFinanceBlockOpen("recorded-bills-list") && (
               <>
                 {currentMonthExtraTxs.filter(t => t.type === "минус").length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-6">За выбранный период коммунальных или накладных расходов еще не зарегистрировано</p>
@@ -2666,7 +2475,7 @@ export default function OwnerSection({
               </button>
             </div>
             
-            {!collapsedBlocks["detailed-daily-ledger"] && (
+            {isFinanceBlockOpen("detailed-daily-ledger") && (
               <div className="overflow-x-auto rounded-xl border border-slate-100">
               <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                 <thead>
@@ -2778,7 +2587,7 @@ export default function OwnerSection({
               </button>
             </div>
             
-            {!collapsedBlocks["detailed-yearly-ledger"] && (
+            {isFinanceBlockOpen("detailed-yearly-ledger") && (
               <div className="overflow-x-auto rounded-xl border border-slate-100">
                 <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                   <thead>
