@@ -176,7 +176,14 @@ export default function App() {
   useEffect(() => {
     if (!preferences.autoBackupEnabled) return;
     const runAutoBackup = async () => {
-      if (!shouldRunAutoBackup(preferences.autoBackupInterval, meta.lastAutoBackupDate, new Date())) {
+      if (
+        !shouldRunAutoBackup(
+          preferences.autoBackupInterval,
+          meta.lastAutoBackupDate,
+          new Date(),
+          preferences.autoBackupPreferredTime
+        )
+      ) {
         return;
       }
       const result = await runAutoBackupNow(backupPayloadRef.current);
@@ -203,7 +210,13 @@ export default function App() {
           : 60 * 60 * 1000;
     const interval = setInterval(runAutoBackup, intervalMs);
     return () => clearInterval(interval);
-  }, [preferences.autoBackupEnabled, preferences.autoBackupInterval, meta.lastAutoBackupDate, setMeta]);
+  }, [
+    preferences.autoBackupEnabled,
+    preferences.autoBackupInterval,
+    preferences.autoBackupPreferredTime,
+    meta.lastAutoBackupDate,
+    setMeta,
+  ]);
 
   const bindSetter = useCallback(
     <K extends keyof typeof state>(key: K) =>
@@ -580,6 +593,8 @@ export default function App() {
                   setAutoBackupEnabled={(v) => setPreference("autoBackupEnabled", v)}
                   autoBackupInterval={preferences.autoBackupInterval}
                   setAutoBackupInterval={(v) => setPreference("autoBackupInterval", v)}
+                  autoBackupPreferredTime={preferences.autoBackupPreferredTime}
+                  setAutoBackupPreferredTime={(v) => setPreference("autoBackupPreferredTime", v)}
                   lastAutoBackupDate={meta.lastAutoBackupDate}
                   onLock={() => setIsOwnerUnlocked(false)}
                   onResetApp={handleResetApp}

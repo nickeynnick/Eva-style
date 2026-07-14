@@ -257,7 +257,8 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
   const dueHint = shouldRunAutoBackup(
     preferences.autoBackupInterval,
     meta.lastAutoBackupDate,
-    new Date()
+    new Date(),
+    preferences.autoBackupPreferredTime
   );
 
   return (
@@ -400,7 +401,13 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
               <div>Desktop API: {desktopInfo.isDesktop ? "да" : "нет (браузер)"} {desktopInfo.keys.length ? `(${desktopInfo.keys.join(", ")})` : ""}</div>
               <div>
                 Автобэкап: {preferences.autoBackupEnabled ? "вкл" : "выкл"} ·{" "}
-                {formatAutoBackupInterval(preferences.autoBackupInterval)} · храним {AUTO_BACKUP_KEEP_LAST}
+                {formatAutoBackupInterval(preferences.autoBackupInterval)}
+                {preferences.autoBackupInterval === "daily" ||
+                preferences.autoBackupInterval === "weekly" ||
+                preferences.autoBackupInterval === "monthly"
+                  ? ` · с ${preferences.autoBackupPreferredTime || "18:00"}`
+                  : ""}{" "}
+                · храним {AUTO_BACKUP_KEEP_LAST}
               </div>
               <div>
                 Последняя автокопия:{" "}
@@ -479,6 +486,9 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
               <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
                 <Bug className="h-3.5 w-3.5" /> CrashLogs
               </h3>
+              <p className="text-[10px] text-slate-500 mb-2 font-sans">
+                Сюда же пишутся ошибки автообновления (`updater-check-error`, `updater-download-error`).
+              </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <DebugActionButton
                   icon={FolderOpen}
@@ -513,6 +523,31 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
                         showAppAlert(`Crash-лог записан:\n${result.path || result.dir}`);
                       } else {
                         showAppAlert(result.error || "Не удалось записать crash-лог");
+                      }
+                    })();
+                  }}
+                />
+                <DebugActionButton
+                  icon={Bug}
+                  label="Записать тестовый updater-лог"
+                  hint="Имитация ошибки проверки обновлений в CrashLogs"
+                  onClick={() => {
+                    void (async () => {
+                      const result = await writeCrashLog({
+                        kind: "updater-check-error",
+                        message: "Тестовая ошибка автообновления из режима разработчика",
+                        extra: {
+                          phase: "check",
+                          manual: true,
+                          source: "dev-panel",
+                          at: new Date().toISOString(),
+                          version: APP_VERSION,
+                        },
+                      });
+                      if (result.success) {
+                        showAppAlert(`Updater-лог записан:\n${result.path || result.dir}`);
+                      } else {
+                        showAppAlert(result.error || "Не удалось записать updater-лог");
                       }
                     })();
                   }}

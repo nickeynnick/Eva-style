@@ -113,3 +113,87 @@ export function exportMonthlyRevenueCsv(
 
   downloadCsv(filename ?? `eva_style_revenue_${year}.csv`, rowsToCsv(rows));
 }
+
+export type PeriodFinanceCsvSummary = {
+  periodTitle: string;
+  grossRevenueExcludingMaterials: number;
+  totalVisitsWorkRevenues: number;
+  totalSolariumMinsRevenues: number;
+  totalSalonMaterialsRevenue: number;
+  totalSolariumMaterialsRevenue: number;
+  materialsPurchaseExpenses: number;
+  adminsMonthlyWages: number;
+  mastersPortionsWages: number;
+  totalAcquiringCommissionPaid: number;
+  otherBillExpenses: number;
+  totalExpensesExcludingMaterials: number;
+  netEarnings: number;
+  cashlessGrossRevenue: number;
+  cashlessAcquiringCommissions: number;
+  cashlessNetRevenue: number;
+};
+
+export type PeriodFinanceMasterRow = {
+  name: string;
+  position: string;
+  count: number;
+  work: number;
+  materials: number;
+  total: number;
+};
+
+/** Сводный CSV по выбранному периоду (P&L + мастера) — тот же scope, что на экране финансов. */
+export function buildPeriodFinanceCsvContent(
+  summary: PeriodFinanceCsvSummary,
+  masters: PeriodFinanceMasterRow[]
+): string {
+  const materialsBalance =
+    summary.totalSalonMaterialsRevenue +
+    summary.totalSolariumMaterialsRevenue -
+    summary.materialsPurchaseExpenses;
+  const rows: (string | number)[][] = [
+    ["Сводный финансовый отчёт — Ева-стиль"],
+    ["Период", summary.periodTitle],
+    ["Сформировано", new Date().toLocaleString("ru-RU")],
+    [],
+    ["Показатель", "Сумма (₽)"],
+    ["Выручка услуг (работа визитов)", summary.totalVisitsWorkRevenues],
+    ["Выручка солярия (минуты)", summary.totalSolariumMinsRevenues],
+    ["Выручка услуг без материалов", summary.grossRevenueExcludingMaterials],
+    ["Материалы салона (с визитов)", summary.totalSalonMaterialsRevenue],
+    ["Материалы солярия", summary.totalSolariumMaterialsRevenue],
+    ["Закупка материалов", summary.materialsPurchaseExpenses],
+    ["Результат по материалам", materialsBalance],
+    ["Зарплаты администраторов", summary.adminsMonthlyWages],
+    ["Доли мастеров", summary.mastersPortionsWages],
+    ["Эквайринг", summary.totalAcquiringCommissionPaid],
+    ["Прочие расходы (без материалов)", summary.otherBillExpenses],
+    ["Расходы без материалов", summary.totalExpensesExcludingMaterials],
+    ["Чистый результат", summary.netEarnings],
+    ["Безнал оборот", summary.cashlessGrossRevenue],
+    ["Безнал эквайринг", summary.cashlessAcquiringCommissions],
+    ["Безнал нетто", summary.cashlessNetRevenue],
+    [],
+    ["Мастер", "Должность", "Визитов", "Работа (₽)", "Материалы (₽)", "Итого (₽)"],
+  ];
+
+  for (const m of masters) {
+    rows.push([m.name, m.position, m.count, m.work, m.materials, m.total]);
+  }
+
+  return rowsToCsv(rows);
+}
+
+export function exportPeriodFinanceCsv(
+  summary: PeriodFinanceCsvSummary,
+  masters: PeriodFinanceMasterRow[],
+  filename?: string
+): void {
+  const content = buildPeriodFinanceCsvContent(summary, masters);
+  const safeName = summary.periodTitle
+    .replace(/[^\wа-яА-ЯёЁ0-9\-]+/gi, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 40);
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadCsv(filename ?? `eva_style_period_${safeName || "report"}_${stamp}.csv`, content);
+}

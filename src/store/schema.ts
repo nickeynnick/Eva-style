@@ -33,6 +33,8 @@ export interface AppPreferences {
   autoLockDuration: number;
   autoBackupEnabled: boolean;
   autoBackupInterval: AutoBackupInterval;
+  /** Предпочтительное локальное время «ЧЧ:ММ» для daily/weekly/monthly. */
+  autoBackupPreferredTime: string;
 }
 
 export interface AppStoreMeta {

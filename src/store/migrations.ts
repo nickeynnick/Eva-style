@@ -16,7 +16,7 @@ import {
 } from "../initialData";
 import { SolariumSession, SettingsRule } from "../types";
 import { getActiveSettingsForDate } from "../utils/settingsUtils";
-import { normalizeAutoBackupInterval } from "../utils/backupData";
+import { normalizeAutoBackupInterval, normalizeAutoBackupPreferredTime } from "../utils/backupData";
 import {
   AppStoreState,
   AppPreferences,
@@ -182,6 +182,10 @@ export function migrateFromLegacyStorage(): AppStoreState {
     autoBackupInterval: normalizeAutoBackupInterval(
       localStorage.getItem("eva_style_auto_backup_interval") || state.preferences.autoBackupInterval
     ),
+    autoBackupPreferredTime: normalizeAutoBackupPreferredTime(
+      localStorage.getItem("eva_style_auto_backup_preferred_time") ||
+        state.preferences.autoBackupPreferredTime
+    ),
   };
 
   state.meta.ownerPassword = localStorage.getItem("eva_style_owner_password") || "";
@@ -202,6 +206,10 @@ export function applyStoreMigrations(state: AppStoreState): AppStoreState {
   next.preferences = {
     ...DEFAULT_APP_PREFERENCES,
     ...next.preferences,
+    autoBackupInterval: normalizeAutoBackupInterval(next.preferences?.autoBackupInterval),
+    autoBackupPreferredTime: normalizeAutoBackupPreferredTime(
+      next.preferences?.autoBackupPreferredTime
+    ),
   };
 
   next.materialConsumptions = migrateMaterialConsumptions(

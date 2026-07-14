@@ -1,5 +1,6 @@
 const { ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { fetchGitHubStatus } = require("./githubStatus.cjs");
 
 /**
  * Извлекает текст списка изменений из ответа electron-updater.
@@ -23,9 +24,17 @@ function sendUpdateEvent(mainWindow, payload) {
   }
 }
 
-function setupAutoUpdater(mainWindow, appVersion) {
+/**
+ * @param {Electron.BrowserWindow} mainWindow
+ * @param {string} appVersion
+ * @param {{ writeCrashLog?: (payload: object) => void }} [options]
+ */
+function setupAutoUpdater(mainWindow, appVersion, options = {}) {
   let manualCheck = false;
   let downloadStarted = false;
+  let statusRequestId = 0;
+  const writeCrashLog =
+    typeof options.writeCrashLog === "function" ? options.writeCrashLog : null;
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
@@ -36,9 +45,36 @@ function setupAutoUpdater(mainWindow, appVersion) {
     };
   }
 
+  const logUpdaterFailure = (phase, error, extra = {}) => {
+    if (!writeCrashLog) return;
+    try {
+      writeCrashLog({
+        kind: phase === "download" ? "updater-download-error" : "updater-check-error",
+        message: error?.message || String(error || "unknown updater error"),
+        stack: error?.stack,
+        extra: {
+          phase,
+          appVersion,
+          ...extra,
+        },
+      });
+    } catch {
+      // ignore secondary failures
+    }
+  };
+
+  const pushGitHubStatus = () => {
+    const requestId = ++statusRequestId;
+    fetchGitHubStatus().then((status) => {
+      if (requestId !== statusRequestId) return;
+      sendUpdateEvent(mainWindow, { type: "github-status", ...status });
+    });
+  };
+
   autoUpdater.on("checking-for-update", () => {
     if (manualCheck) {
       sendUpdateEvent(mainWindow, { type: "checking", currentVersion: appVersion });
+      pushGitHubStatus();
     }
   });
 
@@ -92,8 +128,13 @@ function setupAutoUpdater(mainWindow, appVersion) {
   });
 
   autoUpdater.on("error", (error) => {
-    if (!manualCheck && !downloadStarted) return;
     const wasDownloading = downloadStarted;
+    const wasManual = manualCheck;
+    const phase = wasDownloading ? "download" : "check";
+    logUpdaterFailure(phase, error, { manual: wasManual, source: "autoUpdater.error" });
+
+    if (!manualCheck && !downloadStarted) return;
+
     manualCheck = false;
     downloadStarted = false;
     mainWindow.setProgressBar(-1);
@@ -103,9 +144,10 @@ function setupAutoUpdater(mainWindow, appVersion) {
       : "";
     sendUpdateEvent(mainWindow, {
       type: "error",
-      phase: wasDownloading ? "download" : "check",
+      phase,
       message: (error?.message || "Проверьте подключение к интернету.") + hint,
     });
+    if (wasManual || wasDownloading) pushGitHubStatus();
   });
 
   const downloadUpdate = () => {
@@ -119,11 +161,13 @@ function setupAutoUpdater(mainWindow, appVersion) {
       const hint = error?.message?.includes("404")
         ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
         : "";
+      logUpdaterFailure("download", error, { manual: true, source: "downloadUpdate.catch" });
       sendUpdateEvent(mainWindow, {
         type: "error",
         phase: "download",
         message: (error?.message || "Не удалось начать загрузку.") + hint,
       });
+      pushGitHubStatus();
     });
     return { ok: true };
   };
@@ -141,6 +185,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
   const checkForUpdates = (manual = false) => {
     manualCheck = manual;
     return autoUpdater.checkForUpdates().catch((error) => {
+      logUpdaterFailure("check", error, { manual, source: "checkForUpdates.catch" });
       if (manual) {
         manualCheck = false;
         mainWindow.setProgressBar(-1);
@@ -152,6 +197,7 @@ function setupAutoUpdater(mainWindow, appVersion) {
           phase: "check",
           message: (error?.message || "Проверьте подключение к интернету.") + hint,
         });
+        pushGitHubStatus();
       }
     });
   };

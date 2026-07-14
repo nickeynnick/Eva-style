@@ -185,4 +185,5 @@ export const DEFAULT_APP_PREFERENCES = {
   autoLockDuration: 5,
   autoBackupEnabled: true,
   autoBackupInterval: "weekly" as import("./utils/backupData").AutoBackupInterval,
+  autoBackupPreferredTime: "18:00",
 };

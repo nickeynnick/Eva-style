@@ -15,6 +15,7 @@ const PREFERENCE_LABELS: Record<string, string> = {
   autoLockDuration: "Автоблокировка (мин)",
   autoBackupEnabled: "Авторезервное копирование",
   autoBackupInterval: "Интервал авторезерва",
+  autoBackupPreferredTime: "Время авторезерва",
 };
 
 const COLLECTION_LABELS: Record<

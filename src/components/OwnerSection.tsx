@@ -67,14 +67,16 @@ import {
 } from "lucide-react";
 import { ResetAppMode } from "../utils/resetAppData";
 import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross } from "../utils/dailyFinanceUtils";
-import { AutoBackupInterval } from "../utils/backupData";
+import { AutoBackupInterval, usesPreferredBackupTime } from "../utils/backupData";
 import { AUTO_BACKUP_INTERVAL_OPTIONS } from "../utils/autoBackupRunner";
 import { hashPassword, verifyPassword } from "../utils/ownerPassword";
 import {
   exportAdminShiftsCsv,
   exportMasterPayrollCsv,
   exportMonthlyRevenueCsv,
+  exportPeriodFinanceCsv,
 } from "../utils/csvExport";
+import { APP_VERSION } from "../data/appVersion";
 import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
 import { showAppAlert } from "../utils/appDialog";
 import { restoreAppFocus } from "../utils/restoreAppFocus";
@@ -129,6 +131,8 @@ interface OwnerSectionProps {
   setAutoBackupEnabled?: (val: boolean) => void;
   autoBackupInterval?: AutoBackupInterval;
   setAutoBackupInterval?: (val: AutoBackupInterval) => void;
+  autoBackupPreferredTime?: string;
+  setAutoBackupPreferredTime?: (val: string) => void;
   lastAutoBackupDate?: string | null;
   onLock?: () => void;
   onResetApp?: (mode: "preserveTariffs" | "full") => void;
@@ -183,6 +187,8 @@ export default function OwnerSection({
   setAutoBackupEnabled = () => {},
   autoBackupInterval = "weekly",
   setAutoBackupInterval = () => {},
+  autoBackupPreferredTime = "18:00",
+  setAutoBackupPreferredTime = () => {},
   lastAutoBackupDate = null,
   onLock = () => {},
   onResetApp,
@@ -1005,7 +1011,45 @@ export default function OwnerSection({
           </tbody>
         </table>
 
-        <div class="section-title">3. Информация по мастерам и их потреблению</div>
+        <div class="section-title">3. Расходы и чистый результат</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Статья</th>
+              <th>Описание</th>
+              <th class="number-cell">Сумма (₽)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Зарплаты администраторов</strong></td>
+              <td>Смены за период</td>
+              <td class="number-cell" style="color: #ef4444;">-${adminsMonthlyWages.toLocaleString()} ₽</td>
+            </tr>
+            <tr>
+              <td><strong>Доли мастеров</strong></td>
+              <td>Начисленные проценты от работы</td>
+              <td class="number-cell" style="color: #ef4444;">-${Math.round(mastersPortionsWages).toLocaleString()} ₽</td>
+            </tr>
+            <tr>
+              <td><strong>Эквайринг</strong></td>
+              <td>Комиссия банка по безналу</td>
+              <td class="number-cell" style="color: #ef4444;">-${totalAcquiringCommissionPaid.toLocaleString()} ₽</td>
+            </tr>
+            <tr>
+              <td><strong>Прочие расходы</strong></td>
+              <td>Операционные минусы без закупки материалов</td>
+              <td class="number-cell" style="color: #ef4444;">-${otherBillExpenses.toLocaleString()} ₽</td>
+            </tr>
+            <tr class="totals-row">
+              <td><strong>ЧИСТЫЙ РЕЗУЛЬТАТ</strong></td>
+              <td>Выручка услуг − расходы (материалы отдельно)</td>
+              <td class="number-cell"><strong>${netEarnings.toLocaleString()} ₽</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="section-title">4. Информация по мастерам и их потреблению</div>
         <table>
           <thead>
             <tr>
@@ -1024,7 +1068,7 @@ export default function OwnerSection({
 
         <div class="footer-signature">
           <div>
-            Система учета ИС «Ева-стиль» v0.6.22<br>
+            Система учета ИС «Ева-стиль» v${APP_VERSION}<br>
             Конфиденциальный документ для внутреннего использования владелицей.
           </div>
           <div class="signature-box">
@@ -1057,6 +1101,38 @@ export default function OwnerSection({
       document.body.removeChild(iframe);
       restoreAppFocus();
     }, 5000);
+  };
+
+  const handleExportPeriodReport = () => {
+    exportPeriodFinanceCsv(
+      {
+        periodTitle: selectedPeriodTitle,
+        grossRevenueExcludingMaterials,
+        totalVisitsWorkRevenues,
+        totalSolariumMinsRevenues,
+        totalSalonMaterialsRevenue,
+        totalSolariumMaterialsRevenue,
+        materialsPurchaseExpenses,
+        adminsMonthlyWages,
+        mastersPortionsWages,
+        totalAcquiringCommissionPaid,
+        otherBillExpenses,
+        totalExpensesExcludingMaterials,
+        netEarnings,
+        cashlessGrossRevenue,
+        cashlessAcquiringCommissions,
+        cashlessNetRevenue,
+      },
+      masterRevenueData.map((m) => ({
+        name: m.name,
+        position: m.position,
+        count: m.count,
+        work: m.work,
+        materials: m.materials,
+        total: m.total,
+      }))
+    );
+    handleGeneratePdfReport();
   };
 
   const masterRevenueData = useMemo(() => {
@@ -1981,16 +2057,26 @@ export default function OwnerSection({
               )}
             </div>
 
-            {/* Action Bar for PDF report */}
-            <div className="pt-4 border-t border-slate-100 flex justify-center sm:justify-end">
+            {/* Экспорт за выбранный период: CSV + PDF одной кнопкой */}
+            <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-2 justify-center sm:justify-end">
+              <button
+                type="button"
+                onClick={handleExportPeriodReport}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all active:scale-[0.98] border border-indigo-500 font-sans cursor-pointer"
+                id="generate-finance-period-export-btn"
+              >
+                <FileText className="h-4 w-4" />
+                <span>Экспорт CSV + PDF за период</span>
+              </button>
               <button
                 type="button"
                 onClick={handleGeneratePdfReport}
-                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all active:scale-[0.98] border border-indigo-500 font-sans cursor-pointer"
+                className="w-full sm:w-auto bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-200 font-sans cursor-pointer"
                 id="generate-finance-pdf-btn"
+                title="Только печать / сохранить как PDF"
               >
-                <FileText className="h-4 w-4" />
-                <span>Сформировать PDF-отчет по доходам и материалам</span>
+                <Printer className="h-4 w-4" />
+                <span>Только PDF</span>
               </button>
             </div>
           </div>
@@ -2247,9 +2333,11 @@ export default function OwnerSection({
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-3" style={{ order: 0 }} id="owner-csv-export-card">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <FileText className="h-4 w-4 text-rose-500" />
-                  Экспорт в Excel (CSV)
+                  Дополнительный экспорт (CSV)
                 </h3>
-                <p className="text-[11px] text-slate-400">Файлы открываются в Excel с разделителем «;» и кодировкой UTF-8.</p>
+                <p className="text-[11px] text-slate-400">
+                  Сводный отчёт за выбранный выше период — кнопка «Экспорт CSV + PDF за период». Ниже — отдельные выгрузки по месяцу/году.
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -4544,23 +4632,47 @@ export default function OwnerSection({
                     </button>
                   </div>
                   {autoBackupEnabled && (
-                    <div className="flex flex-wrap items-center gap-3 p-4 bg-emerald-50/50 border border-emerald-100/60 rounded-xl">
-                      <span className="text-xs text-slate-600 font-semibold">Интервал:</span>
-                      <select
-                        value={autoBackupInterval}
-                        onChange={(e) => setAutoBackupInterval(e.target.value as AutoBackupInterval)}
-                        className="text-xs font-bold border border-emerald-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      >
-                        {AUTO_BACKUP_INTERVAL_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      {lastAutoBackupDate && (
-                        <span className="text-[11px] text-slate-500">
-                          Последняя копия: {new Date(lastAutoBackupDate + "T12:00:00").toLocaleDateString("ru-RU")}
-                        </span>
+                    <div className="space-y-3 p-4 bg-emerald-50/50 border border-emerald-100/60 rounded-xl">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-xs text-slate-600 font-semibold">Интервал:</span>
+                        <select
+                          value={autoBackupInterval}
+                          onChange={(e) => setAutoBackupInterval(e.target.value as AutoBackupInterval)}
+                          className="text-xs font-bold border border-emerald-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {AUTO_BACKUP_INTERVAL_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        {lastAutoBackupDate && (
+                          <span className="text-[11px] text-slate-500">
+                            Последняя копия:{" "}
+                            {new Date(
+                              lastAutoBackupDate.includes("T")
+                                ? lastAutoBackupDate
+                                : lastAutoBackupDate + "T12:00:00"
+                            ).toLocaleString("ru-RU")}
+                          </span>
+                        )}
+                      </div>
+                      {usesPreferredBackupTime(autoBackupInterval) && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <label className="text-xs text-slate-600 font-semibold" htmlFor="auto-backup-preferred-time">
+                            Предпочтительное время:
+                          </label>
+                          <input
+                            id="auto-backup-preferred-time"
+                            type="time"
+                            value={autoBackupPreferredTime}
+                            onChange={(e) => setAutoBackupPreferredTime(e.target.value || "18:00")}
+                            className="text-xs font-bold border border-emerald-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                          <span className="text-[11px] text-slate-500 font-sans max-w-md">
+                            Копия за период создаётся после этого времени (если программа открыта). По умолчанию 18:00.
+                          </span>
+                        </div>
                       )}
                     </div>
                   )}

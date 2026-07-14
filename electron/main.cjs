@@ -487,7 +487,9 @@ if (!gotTheLock) {
     });
 
     if (!isDev && !isPortable) {
-      updaterControls = setupAutoUpdater(mainWindow, APP_VERSION);
+      updaterControls = setupAutoUpdater(mainWindow, APP_VERSION, {
+        writeCrashLog: writeCrashLogFile,
+      });
     }
 
     buildMenu(mainWindow);

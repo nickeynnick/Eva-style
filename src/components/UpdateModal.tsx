@@ -22,7 +22,21 @@ type UpdaterEvent =
       bytesPerSecond: number;
     }
   | { type: "downloaded"; version: string; releaseNotes: string }
-  | { type: "error"; phase: "check" | "download"; message: string };
+  | { type: "error"; phase: "check" | "download"; message: string }
+  | {
+      type: "github-status";
+      reachable: boolean;
+      indicator: string;
+      description: string;
+      descriptionRu: string;
+    };
+
+export type GitHubStatusInfo = {
+  reachable: boolean;
+  indicator: string;
+  description: string;
+  descriptionRu: string;
+};
 
 export type UpdateModalPhase =
   | { kind: "checking"; currentVersion: string }
@@ -158,16 +172,81 @@ function ReleaseNotes({ notes }: { notes: string }) {
   );
 }
 
+function GitHubStatusBadge({ status }: { status: GitHubStatusInfo | null }) {
+  if (!status) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+        <span>Проверяем статус GitHub…</span>
+      </div>
+    );
+  }
+
+  const tone =
+    !status.reachable || status.indicator === "unknown"
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : status.indicator === "none"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : status.indicator === "minor"
+          ? "border-amber-200 bg-amber-50 text-amber-900"
+          : "border-rose-200 bg-rose-50 text-rose-900";
+
+  const Icon =
+    !status.reachable || status.indicator === "unknown"
+      ? AlertCircle
+      : status.indicator === "none"
+        ? CheckCircle2
+        : AlertCircle;
+
+  return (
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-snug ${tone}`}>
+      <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="font-semibold">{status.descriptionRu}</p>
+        {!status.reachable && (
+          <p className="mt-0.5 opacity-80">
+            Если обновление не находится — подождите, пока GitHub восстановится, и проверьте снова.
+          </p>
+        )}
+        {status.reachable && status.indicator !== "none" && status.indicator !== "unknown" && (
+          <p className="mt-0.5 opacity-80">
+            Автообновление может временно не работать. Подробнее: githubstatus.com
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function UpdateModal() {
   const [phase, setPhase] = useState<ModalPhase | null>(null);
   const [busy, setBusy] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
+  const [githubStatus, setGithubStatus] = useState<GitHubStatusInfo | null>(null);
+  const showGithubStatus = phase?.kind === "checking" || phase?.kind === "error";
 
   useEffect(() => {
     registerUpdateModalPreview((next, preview) => {
       setIsPreview(preview);
       setBusy(false);
       setPhase(next);
+      if (preview && next?.kind === "checking") {
+        setGithubStatus({
+          reachable: true,
+          indicator: "none",
+          description: "All Systems Operational",
+          descriptionRu: "GitHub: всё работает",
+        });
+      } else if (preview && next?.kind === "error") {
+        setGithubStatus({
+          reachable: false,
+          indicator: "unknown",
+          description: "Unable to reach GitHub Status",
+          descriptionRu: "Не удалось получить статус GitHub",
+        });
+      } else if (!preview) {
+        setGithubStatus(null);
+      }
     });
     return () => registerUpdateModalPreview(null);
   }, []);
@@ -183,7 +262,16 @@ export default function UpdateModal() {
       setIsPreview(false);
       switch (event.type) {
         case "checking":
+          setGithubStatus(null);
           setPhase({ kind: "checking", currentVersion: event.currentVersion });
+          break;
+        case "github-status":
+          setGithubStatus({
+            reachable: event.reachable,
+            indicator: event.indicator,
+            description: event.description,
+            descriptionRu: event.descriptionRu,
+          });
           break;
         case "available":
           pendingVersion = event.version;
@@ -266,6 +354,7 @@ export default function UpdateModal() {
     setPhase(null);
     setBusy(false);
     setIsPreview(false);
+    setGithubStatus(null);
   };
 
   const onDownload = async () => {
@@ -367,9 +456,12 @@ export default function UpdateModal() {
 
         <div className="p-5 space-y-3 overflow-y-auto flex-1 min-h-0">
           {phase.kind === "checking" && (
-            <div className="flex items-center gap-3 text-sm text-slate-600">
-              <Loader2 className="h-5 w-5 text-rose-500 animate-spin shrink-0" />
-              <span>Ищем новые версии…</span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <Loader2 className="h-5 w-5 text-rose-500 animate-spin shrink-0" />
+                <span>Ищем новые версии…</span>
+              </div>
+              <GitHubStatusBadge status={githubStatus} />
             </div>
           )}
 
@@ -429,16 +521,19 @@ export default function UpdateModal() {
           )}
 
           {phase.kind === "error" && (
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 mb-1">
-                  {phase.phase === "download"
-                    ? "Ошибка при скачивании обновления"
-                    : "Не удалось проверить обновления"}
-                </p>
-                <p className="text-sm text-slate-600 whitespace-pre-wrap break-words">{phase.message}</p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 mb-1">
+                    {phase.phase === "download"
+                      ? "Ошибка при скачивании обновления"
+                      : "Не удалось проверить обновления"}
+                  </p>
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap break-words">{phase.message}</p>
+                </div>
               </div>
+              {showGithubStatus && <GitHubStatusBadge status={githubStatus} />}
             </div>
           )}
         </div>
