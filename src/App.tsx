@@ -25,6 +25,7 @@ import WhatsNewModal from "./components/WhatsNewModal";
 import ThemeToggle from "./components/ThemeToggle";
 import { getChangelogForVersion } from "./data/changelog";
 import { APP_VERSION } from "./data/appVersion";
+import { publicAsset } from "./utils/publicAsset";
 import {
   useAppStore,
   useStorePreferences,
@@ -294,7 +295,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src="/icon.png"
+              src={publicAsset("icon.png")}
               alt="Ева-стиль"
               className="h-8 w-8 rounded object-cover border border-rose-100 shadow-sm"
               width={32}

@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.3",
+    title: "Ева-стиль 1.2.3",
+    sections: [
+      {
+        heading: "Исправления",
+        items: [
+          "Звук запуска и логотип снова работают в установленной версии после автообновления",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.2.2",
     title: "Ева-стиль 1.2.2",
     sections: [
