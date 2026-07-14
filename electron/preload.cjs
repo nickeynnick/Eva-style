@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld("evaStyleDesktop", {
   saveBackup: (payload) => ipcRenderer.invoke("save-backup", payload),
   autoSaveBackup: (payload) => ipcRenderer.invoke("auto-save-backup", payload),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  downloadUpdate: () => ipcRenderer.invoke("updater:download"),
+  installUpdate: () => ipcRenderer.invoke("updater:install"),
+  onUpdaterEvent: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("updater:event", listener);
+    return () => ipcRenderer.removeListener("updater:event", listener);
+  },
   focusWindow: () => ipcRenderer.invoke("focus-window"),
   writeCrashLog: (payload) => ipcRenderer.invoke("write-crash-log", payload),
   openCrashLogs: () => ipcRenderer.invoke("open-crash-logs"),

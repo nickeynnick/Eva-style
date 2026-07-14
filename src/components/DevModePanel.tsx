@@ -36,6 +36,7 @@ import { openCrashLogsFolder, getCrashLogsPath, writeCrashLog } from "../utils/c
 import { getDurableStoreInfo, openDurableStoreFolder, isDesktopDurableStore } from "../store/persistence";
 import { APP_VERSION } from "../data/appVersion";
 import { STORE_STORAGE_KEY } from "../store/schema";
+import { previewUpdateModal } from "./UpdateModal";
 
 type PanelTab = "history" | "logs" | "diagnostics" | "debug";
 type SourceFilter = "all" | "history" | "console" | "other";
@@ -573,6 +574,25 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
                   label="Показать «Что нового» снова"
                   hint={`Сбросит seenAppVersion (текущая ${APP_VERSION})`}
                   onClick={resetWhatsNew}
+                />
+                <DebugActionButton
+                  icon={Download}
+                  label="Окно обновления"
+                  hint="Предпросмотр UI: доступно → скачать → прогресс → готово"
+                  tone="emerald"
+                  onClick={() => {
+                    onClose();
+                    previewUpdateModal("available");
+                  }}
+                />
+                <DebugActionButton
+                  icon={RefreshCw}
+                  label="Окно: прогресс загрузки"
+                  hint="Предпросмотр состояния скачивания обновления"
+                  onClick={() => {
+                    onClose();
+                    previewUpdateModal("downloading");
+                  }}
                 />
                 <DebugActionButton
                   icon={RefreshCw}

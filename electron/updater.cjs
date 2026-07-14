@@ -1,4 +1,4 @@
-const { dialog } = require("electron");
+const { ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 
 /**
@@ -14,18 +14,13 @@ function formatReleaseNotes(info) {
   return "";
 }
 
-function refocusMainWindow(mainWindow) {
+function sendUpdateEvent(mainWindow, payload) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
-  mainWindow.webContents.focus();
-}
-
-function showMessageBox(mainWindow, options) {
-  return dialog.showMessageBox(mainWindow, options).then((result) => {
-    refocusMainWindow(mainWindow);
-    return result;
-  });
+  try {
+    mainWindow.webContents.send("updater:event", payload);
+  } catch {
+    // окно уже закрыто
+  }
 }
 
 function setupAutoUpdater(mainWindow, appVersion) {
@@ -35,64 +30,53 @@ function setupAutoUpdater(mainWindow, appVersion) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  // Если задан GH_TOKEN (приватный репо), передаём его апдейтеру
   if (process.env.GH_TOKEN) {
     autoUpdater.requestHeaders = {
       Authorization: `Bearer ${process.env.GH_TOKEN}`,
     };
   }
 
-  autoUpdater.on("update-available", (info) => {
-    manualCheck = false;
-    downloadStarted = false;
-    mainWindow.setProgressBar(-1); // сброс прогресса
-    const changelog = formatReleaseNotes(info);
-    const detail = `Текущая версия: ${appVersion}` +
-      (changelog ? `\n\nСписок изменений:\n${changelog}` : "") +
-      `\n\nСкачать и установить обновление?`;
+  autoUpdater.on("checking-for-update", () => {
+    if (manualCheck) {
+      sendUpdateEvent(mainWindow, { type: "checking", currentVersion: appVersion });
+    }
+  });
 
-    showMessageBox(mainWindow, {
-        type: "info",
-        title: "Доступно обновление",
-        message: `Доступна новая версия ${info.version}`,
-        detail,
-        buttons: ["Скачать", "Позже"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          downloadStarted = true;
-          showMessageBox(mainWindow, {
-            type: "info",
-            title: "Загрузка обновления",
-            message: "Начинается загрузка обновления…",
-            detail: "Прогресс отображается на иконке программы в панели задач.\n\nПосле завершения загрузки появится уведомление.",
-            buttons: ["OK"],
-          });
-          autoUpdater.downloadUpdate();
-        }
-      });
+  autoUpdater.on("update-available", (info) => {
+    downloadStarted = false;
+    mainWindow.setProgressBar(-1);
+    sendUpdateEvent(mainWindow, {
+      type: "available",
+      version: info.version,
+      currentVersion: appVersion,
+      releaseNotes: formatReleaseNotes(info),
+      manual: manualCheck,
+    });
+    manualCheck = false;
   });
 
   autoUpdater.on("download-progress", (progress) => {
     if (!downloadStarted) return;
-    const fraction = progress.percent / 100;
+    const fraction = Math.min(1, Math.max(0, progress.percent / 100));
     mainWindow.setProgressBar(fraction);
     const pct = Math.round(progress.percent);
     mainWindow.setTitle(`Ева-стиль — Учётный пульт (загрузка: ${pct}%)`);
+    sendUpdateEvent(mainWindow, {
+      type: "progress",
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond,
+    });
   });
 
   autoUpdater.on("update-not-available", () => {
+    mainWindow.setProgressBar(-1);
     if (!manualCheck) return;
     manualCheck = false;
-    mainWindow.setProgressBar(-1);
-    showMessageBox(mainWindow, {
-      type: "info",
-      title: "Обновления",
-      message: "У вас установлена последняя версия.",
-      detail: `Версия ${appVersion}`,
-      buttons: ["OK"],
+    sendUpdateEvent(mainWindow, {
+      type: "not-available",
+      currentVersion: appVersion,
     });
   });
 
@@ -100,28 +84,16 @@ function setupAutoUpdater(mainWindow, appVersion) {
     downloadStarted = false;
     mainWindow.setProgressBar(-1);
     mainWindow.setTitle("Ева-стиль — Учётный пульт");
-    const changelog = formatReleaseNotes(info);
-    const detail = (changelog ? `Список изменений:\n${changelog}\n\n` : "") +
-      "Перезапустить программу для установки обновления?";
-
-    showMessageBox(mainWindow, {
-        type: "info",
-        title: "Обновление готово",
-        message: `Версия ${info.version} скачана.`,
-        detail,
-        buttons: ["Перезапустить", "Позже"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.quitAndInstall();
-        }
-      });
+    sendUpdateEvent(mainWindow, {
+      type: "downloaded",
+      version: info.version,
+      releaseNotes: formatReleaseNotes(info),
+    });
   });
 
   autoUpdater.on("error", (error) => {
     if (!manualCheck && !downloadStarted) return;
+    const wasDownloading = downloadStarted;
     manualCheck = false;
     downloadStarted = false;
     mainWindow.setProgressBar(-1);
@@ -129,14 +101,42 @@ function setupAutoUpdater(mainWindow, appVersion) {
     const hint = error?.message?.includes("404")
       ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
       : "";
-    showMessageBox(mainWindow, {
+    sendUpdateEvent(mainWindow, {
       type: "error",
-      title: "Ошибка обновления",
-      message: downloadStarted ? "Ошибка при скачивании обновления." : "Не удалось проверить обновления.",
-      detail: (error?.message || "Проверьте подключение к интернету.") + hint,
-      buttons: ["OK"],
+      phase: wasDownloading ? "download" : "check",
+      message: (error?.message || "Проверьте подключение к интернету.") + hint,
     });
   });
+
+  const downloadUpdate = () => {
+    if (downloadStarted) return { ok: true, already: true };
+    downloadStarted = true;
+    sendUpdateEvent(mainWindow, { type: "download-started" });
+    autoUpdater.downloadUpdate().catch((error) => {
+      downloadStarted = false;
+      mainWindow.setProgressBar(-1);
+      mainWindow.setTitle("Ева-стиль — Учётный пульт");
+      const hint = error?.message?.includes("404")
+        ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
+        : "";
+      sendUpdateEvent(mainWindow, {
+        type: "error",
+        phase: "download",
+        message: (error?.message || "Не удалось начать загрузку.") + hint,
+      });
+    });
+    return { ok: true };
+  };
+
+  const installUpdate = () => {
+    autoUpdater.quitAndInstall();
+    return { ok: true };
+  };
+
+  ipcMain.removeHandler("updater:download");
+  ipcMain.removeHandler("updater:install");
+  ipcMain.handle("updater:download", () => downloadUpdate());
+  ipcMain.handle("updater:install", () => installUpdate());
 
   const checkForUpdates = (manual = false) => {
     manualCheck = manual;
@@ -147,21 +147,18 @@ function setupAutoUpdater(mainWindow, appVersion) {
         const hint = error?.message?.includes("404")
           ? "\n\nУбедитесь, что репозиторий публичный или задан GH_TOKEN."
           : "";
-        showMessageBox(mainWindow, {
+        sendUpdateEvent(mainWindow, {
           type: "error",
-          title: "Ошибка обновления",
-          message: "Не удалось проверить обновления.",
-          detail: (error?.message || "Проверьте подключение к интернету.") + hint,
-          buttons: ["OK"],
+          phase: "check",
+          message: (error?.message || "Проверьте подключение к интернету.") + hint,
         });
       }
     });
   };
 
-  // Проверка при запуске (через 5 секунд, без уведомления если версия актуальна)
   setTimeout(() => checkForUpdates(false), 5000);
 
-  return { checkForUpdates };
+  return { checkForUpdates, downloadUpdate, installUpdate };
 }
 
 module.exports = { setupAutoUpdater };

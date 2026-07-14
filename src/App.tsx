@@ -22,6 +22,7 @@ import GlobalSearch from "./components/GlobalSearch";
 import WelcomeOverlay from "./components/WelcomeOverlay";
 import ImportPreviewModal from "./components/ImportPreviewModal";
 import WhatsNewModal from "./components/WhatsNewModal";
+import UpdateModal from "./components/UpdateModal";
 import ThemeToggle from "./components/ThemeToggle";
 import { getChangelogForVersion } from "./data/changelog";
 import { APP_VERSION } from "./data/appVersion";
@@ -264,6 +265,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800" id="eva_style_root">
       <AppDialogHost />
+      <UpdateModal />
       <WelcomeOverlay />
       {showWhatsNew && changelogEntry && (
         <WhatsNewModal

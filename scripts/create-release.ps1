@@ -6,25 +6,25 @@ param(
     [string]$Repo = "nickeynnick/Eva-style",
     
     [Parameter(Mandatory=$false)]
-    [string]$Tag = "v1.2.3",
+    [string]$Tag = "v1.2.4",
     
     [Parameter(Mandatory=$false)]
-    [string]$InstallerPath = "release\eva-style-setup-1.2.3.exe",
+    [string]$InstallerPath = "release\eva-style-setup-1.2.4.exe",
     
     [Parameter(Mandatory=$false)]
-    [string]$PortablePath = "release\eva-style-1.2.3-portable.exe"
+    [string]$PortablePath = "release\eva-style-1.2.4-portable.exe"
 )
 
 $ErrorActionPreference = "Stop"
 
 $notes = @"
-## Ева-стиль 1.2.3
+## Ева-стиль 1.2.4
 
 См. release-notes.md в корне репозитория.
 
 ## Файлы
-- `eva-style-setup-1.2.3.exe` — установщик (NSIS)
-- `eva-style-1.2.3-portable.exe` — портативная версия
+- `eva-style-setup-1.2.4.exe` — установщик (NSIS)
+- `eva-style-1.2.4-portable.exe` — портативная версия
 "@
 
 $headers = @{

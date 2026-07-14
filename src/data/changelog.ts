@@ -8,6 +8,19 @@ export interface ChangelogEntry {
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.4",
+    title: "Ева-стиль 1.2.4",
+    sections: [
+      {
+        heading: "Интерфейс",
+        items: [
+          "Окно обновления в стиле программы: changelog с прокруткой и прогресс загрузки",
+          "В режиме разработчика — предпросмотр окна обновления",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.2.3",
     title: "Ева-стиль 1.2.3",
     sections: [
