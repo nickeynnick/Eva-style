@@ -140,8 +140,7 @@ export async function checkForAppUpdates(): Promise<void> {
       {
         kind: "error",
         phase: "check",
-        message:
-          "Автообновление в этой сборке ещё не подключено. Скачайте новую версию с GitHub, если она уже опубликована.",
+        message: `Не удалось проверить обновления (статус: ${status}).`,
       },
       false
     );

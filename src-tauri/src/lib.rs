@@ -2,14 +2,17 @@
 
 mod data_store;
 mod paths;
+mod updater;
 
 use data_store::{DataStore, DataStoreInfo, StoreLoadResult, StoreSaveResult};
 use paths::{auto_save_backup, detect_portable, get_crash_logs_dir, write_crash_log, PathResult};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, FilePath};
+use updater::PendingUpdateState;
 
 struct AppState {
     store: Mutex<Option<DataStore>>,
@@ -224,25 +227,38 @@ fn auto_save_backup_cmd(payload: BackupPayload) -> PathResult {
 }
 
 #[tauri::command]
-fn check_for_updates(state: State<'_, AppState>) -> serde_json::Value {
+async fn check_for_updates(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     if cfg!(debug_assertions) {
-        return serde_json::json!({ "status": "dev" });
+        return Ok(serde_json::json!({ "status": "dev" }));
     }
     if state.portable {
-        return serde_json::json!({ "status": "portable" });
+        return Ok(serde_json::json!({ "status": "portable" }));
     }
-    // Автообновление подключится позже (tauri-plugin-updater + подпись).
-    serde_json::json!({ "status": "unavailable" })
+
+    let version = state.version.clone();
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        updater::run_check(handle, version, true).await;
+    });
+    Ok(serde_json::json!({ "status": "checking" }))
 }
 
 #[tauri::command]
-fn download_update() -> serde_json::Value {
-    serde_json::json!({ "ok": false, "error": "Автообновление ещё не подключено в Tauri" })
+async fn download_update(app: AppHandle) -> Result<serde_json::Value, String> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        updater::run_download(handle).await;
+    });
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 #[tauri::command]
-fn install_update() -> serde_json::Value {
-    serde_json::json!({ "ok": false, "error": "Автообновление ещё не подключено в Tauri" })
+fn install_update(app: AppHandle) -> Result<serde_json::Value, String> {
+    updater::run_install(app)?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 #[tauri::command]
@@ -346,11 +362,20 @@ pub fn run() {
 
             app.manage(AppState {
                 store: Mutex::new(Some(store)),
-                exe_dir,
+                exe_dir: exe_dir.clone(),
                 portable,
-                version,
+                version: version.clone(),
                 packaged,
             });
+            app.manage::<PendingUpdateState>(Mutex::new(None));
+
+            if packaged && !portable {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(4)).await;
+                    updater::run_check(handle, version, false).await;
+                });
+            }
 
             Ok(())
         })

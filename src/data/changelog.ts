@@ -8,6 +8,19 @@ export interface ChangelogEntry {
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.4.1",
+    title: "Ева-стиль 1.4.1",
+    sections: [
+      {
+        heading: "Обновления",
+        items: [
+          "Автопроверка и установка обновлений через GitHub в Windows-приложении (Tauri)",
+          "Кнопка «Проверить обновления» в справке снова работает",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.0",
     title: "Ева-стиль 1.4.0",
     sections: [
