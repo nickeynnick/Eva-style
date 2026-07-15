@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.4.2",
+    title: "Ева-стиль 1.4.2",
+    sections: [
+      {
+        heading: "Исправлено",
+        items: [
+          "Проверка обновлений больше не падает с ошибкой GitHub 403 — используется публичный latest.yml",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.1",
     title: "Ева-стиль 1.4.1",
     sections: [

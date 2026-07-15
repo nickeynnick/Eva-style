@@ -1,6 +1,6 @@
 [package]
 name = "eva-style"
-version = "1.4.1"
+version = "1.4.2"
 description = "Программа для управления салоном красоты «Ева-стиль»"
 authors = ["Ева-стиль"]
 edition = "2021"

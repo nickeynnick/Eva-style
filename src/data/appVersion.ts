@@ -1,2 +1,2 @@
 /** Единая версия приложения для UI, «Что нового» и справки. */
-export const APP_VERSION = "1.4.1";
+export const APP_VERSION = "1.4.2";

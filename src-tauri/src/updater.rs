@@ -10,7 +10,11 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 
 const GITHUB_REPO: &str = "nickeynnick/Eva-style";
-const RELEASES_LATEST: &str = "https://api.github.com/repos/nickeynnick/Eva-style/releases/latest";
+/// Публичный файл релиза (без GitHub API — нет лимита 403).
+const LATEST_YML: &str =
+    "https://github.com/nickeynnick/Eva-style/releases/latest/download/latest.yml";
+const DOWNLOAD_BASE: &str =
+    "https://github.com/nickeynnick/Eva-style/releases/latest/download";
 const GH_STATUS: &str = "https://www.githubstatus.com/api/v2/status.json";
 
 #[derive(Default)]
@@ -100,10 +104,69 @@ fn is_newer(remote: &str, local: &str) -> bool {
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent(format!("eva-style-updater/{GITHUB_REPO}"))
+        .user_agent(format!("Ева-стиль/{GITHUB_REPO}"))
         .timeout(std::time::Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// Разбор electron-builder `latest.yml` (version + path/url установщика).
+fn parse_latest_yml(text: &str) -> Result<(String, String), String> {
+    let mut version: Option<String> = None;
+    let mut file_name: Option<String> = None;
+
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("version:") {
+            version = Some(
+                rest.trim()
+                    .trim_matches(|c| c == '\'' || c == '"')
+                    .to_string(),
+            );
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("path:") {
+            file_name = Some(
+                rest.trim()
+                    .trim_matches(|c| c == '\'' || c == '"')
+                    .to_string(),
+            );
+            continue;
+        }
+        // files: - url: name.exe
+        if let Some(rest) = line.strip_prefix("- url:") {
+            if file_name.is_none() {
+                file_name = Some(
+                    rest.trim()
+                        .trim_matches(|c| c == '\'' || c == '"')
+                        .to_string(),
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("url:") {
+            if file_name.is_none() {
+                file_name = Some(
+                    rest.trim()
+                        .trim_matches(|c| c == '\'' || c == '"')
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    let version = version.filter(|v| !v.is_empty()).ok_or_else(|| {
+        "В latest.yml нет номера версии. Проверьте файлы релиза на GitHub.".to_string()
+    })?;
+    let file_name = file_name.filter(|v| !v.is_empty()).ok_or_else(|| {
+        "В latest.yml нет имени установщика (path/url).".to_string()
+    })?;
+
+    Ok((version.trim_start_matches('v').to_string(), file_name))
 }
 
 async fn push_github_status(app: &AppHandle) {
@@ -153,42 +216,10 @@ async fn push_github_status(app: &AppHandle) {
     }
 }
 
-fn pick_setup_asset(assets: &[serde_json::Value]) -> Option<(String, String)> {
-    let mut candidates: Vec<(i32, String, String)> = Vec::new();
-    for asset in assets {
-        let name = asset.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let url = asset
-            .get("browser_download_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if name.is_empty() || url.is_empty() {
-            continue;
-        }
-        let lower = name.to_ascii_lowercase();
-        if !lower.ends_with(".exe") {
-            continue;
-        }
-        if lower.contains("portable") {
-            continue;
-        }
-        let score = if lower.starts_with("eva-style-setup-") {
-            100
-        } else if lower.contains("setup") {
-            80
-        } else if lower.contains("msi") {
-            40
-        } else {
-            10
-        };
-        candidates.push((score, name.to_string(), url.to_string()));
-    }
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
-    candidates.into_iter().next().map(|(_, name, url)| (name, url))
-}
-
 pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
     if manual {
-        emit(            &app,
+        emit(
+            &app,
             UpdateEvent::Checking {
                 current_version: current_version.clone(),
             },
@@ -199,7 +230,8 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
     let client = match http_client() {
         Ok(c) => c,
         Err(message) => {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "check".into(),
                     message,
@@ -209,13 +241,14 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         }
     };
 
-    let response = match client.get(RELEASES_LATEST).send().await {
+    let response = match client.get(LATEST_YML).send().await {
         Ok(r) => r,
         Err(e) => {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "check".into(),
-                    message: format!("Не удалось связаться с GitHub: {e}"),
+                    message: format!("Не удалось скачать latest.yml с GitHub: {e}"),
                 },
             );
             return;
@@ -223,11 +256,12 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
     };
 
     if !response.status().is_success() {
-        emit(            &app,
+        emit(
+            &app,
             UpdateEvent::Error {
                 phase: "check".into(),
                 message: format!(
-                    "GitHub вернул ошибку при проверке релиза (HTTP {}).",
+                    "Не удалось получить latest.yml (HTTP {}). Проверьте, что релиз опубликован.",
                     response.status()
                 ),
             },
@@ -235,49 +269,38 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         return;
     }
 
-    let body: serde_json::Value = match response.json().await {
-        Ok(v) => v,
+    let text = match response.text().await {
+        Ok(t) => t,
         Err(e) => {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "check".into(),
-                    message: format!("Не удалось разобрать ответ GitHub: {e}"),
+                    message: format!("Не удалось прочитать latest.yml: {e}"),
                 },
             );
             return;
         }
     };
 
-    let tag = body
-        .get("tag_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim_start_matches('v')
-        .to_string();
-    let notes = body
-        .get("body")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let assets = body
-        .get("assets")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    if tag.is_empty() {
-        emit(            &app,
-            UpdateEvent::Error {
-                phase: "check".into(),
-                message: "В ответе GitHub нет номера версии.".into(),
-            },
-        );
-        return;
-    }
+    let (tag, file_name) = match parse_latest_yml(&text) {
+        Ok(v) => v,
+        Err(message) => {
+            emit(
+                &app,
+                UpdateEvent::Error {
+                    phase: "check".into(),
+                    message,
+                },
+            );
+            return;
+        }
+    };
 
     if !is_newer(&tag, &current_version) {
         if manual {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::NotAvailable {
                     current_version: current_version.clone(),
                 },
@@ -286,17 +309,13 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         return;
     }
 
-    let Some((_name, url)) = pick_setup_asset(&assets) else {
-        emit(            &app,
-            UpdateEvent::Error {
-                phase: "check".into(),
-                message: format!(
-                    "Найдена версия {tag}, но в релизе нет установщика (.exe). Скачайте вручную с GitHub."
-                ),
-            },
-        );
-        return;
+    let url = if file_name.starts_with("http://") || file_name.starts_with("https://") {
+        file_name
+    } else {
+        format!("{DOWNLOAD_BASE}/{file_name}")
     };
+
+    let notes = format!("Доступна версия {tag}. После загрузки запустится установщик.");
 
     if let Some(state) = app.try_state::<PendingUpdateState>() {
         if let Ok(mut guard) = state.lock() {
@@ -309,7 +328,8 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         }
     }
 
-    emit(        &app,
+    emit(
+        &app,
         UpdateEvent::Available {
             version: tag,
             current_version,
