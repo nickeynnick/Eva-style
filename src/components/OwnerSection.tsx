@@ -49,7 +49,8 @@ import {
   Eye,
   EyeOff,
   FileText,
-  Printer
+  Printer,
+  ZoomIn,
 } from "lucide-react";
 import { ResetAppMode } from "../utils/resetAppData";
 import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross } from "../utils/dailyFinanceUtils";
@@ -66,6 +67,12 @@ import { APP_VERSION } from "../data/appVersion";
 import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
 import { showAppAlert } from "../utils/appDialog";
 import { printHtmlDocument } from "../utils/printHtml";
+import {
+  UI_ZOOM_OPTIONS,
+  applyUiZoom,
+  formatUiZoom,
+  useUiZoom,
+} from "../utils/uiZoom";
 
 const LazyRevenueDayChart = lazy(() =>
   import("./OwnerFinanceCharts").then((m) => ({ default: m.RevenueDayChart }))
@@ -200,6 +207,7 @@ export default function OwnerSection({
   const [resetConfirmWord, setResetConfirmWord] = useState("");
   const themeMode = useThemeMode();
   const chartColors = useMemo(() => getThemeChartColors(), [themeMode]);
+  const uiZoom = useUiZoom();
 
   const startReset = (mode: ResetAppMode) => {
     setConfirmResetMode(mode);
@@ -298,6 +306,15 @@ export default function OwnerSection({
     if (!block?.visible) return false;
     return !collapsedBlocks[id];
   };
+
+  const onFinanceTab = activeSubTab === "finance";
+  /** Тяжёлые агрегаты — только на вкладке «Сводный отчет». */
+  const needFinanceData = onFinanceTab;
+  /** Диаграммы и большие таблицы — только когда блок развёрнут (иначе не считаем и не держим в памяти). */
+  const needRevenueChart = onFinanceTab && isFinanceBlockOpen("revenue-chart");
+  const needMasterRevenue = onFinanceTab; // нужна и диаграмме, и CSV/PDF-экспорту
+  const needDailyLedger = onFinanceTab && isFinanceBlockOpen("detailed-daily-ledger");
+  const needYearlyLedger = onFinanceTab && isFinanceBlockOpen("detailed-yearly-ledger");
 
   // Local state for password forms in Settings Panel
   const [secNewPassword, setSecNewPassword] = useState("");
@@ -515,10 +532,22 @@ export default function OwnerSection({
     return [];
   }, [finPeriodType, finSelectedDay, finStartDate, finEndDate, finYear, finMonth]);
 
-  const currentMonthVisits = useMemo(() => visits.filter(v => isDateInPeriod(v.date) && !v.isDeleted), [visits, isDateInPeriod]);
-  const currentMonthSolarium = useMemo(() => solariumSessions.filter(s => isDateInPeriod(s.date)), [solariumSessions, isDateInPeriod]);
-  const currentMonthExtraTxs = useMemo(() => extraTransactions.filter(t => isDateInPeriod(t.date) && !t.isDeleted), [extraTransactions, isDateInPeriod]);
-  const currentMonthShifts = useMemo(() => adminShifts.filter(s => isDateInPeriod(s.date)), [adminShifts, isDateInPeriod]);
+  const currentMonthVisits = useMemo(() => {
+    if (!needFinanceData) return [];
+    return visits.filter((v) => isDateInPeriod(v.date) && !v.isDeleted);
+  }, [needFinanceData, visits, isDateInPeriod]);
+  const currentMonthSolarium = useMemo(() => {
+    if (!needFinanceData) return [];
+    return solariumSessions.filter((s) => isDateInPeriod(s.date));
+  }, [needFinanceData, solariumSessions, isDateInPeriod]);
+  const currentMonthExtraTxs = useMemo(() => {
+    if (!needFinanceData) return [];
+    return extraTransactions.filter((t) => isDateInPeriod(t.date) && !t.isDeleted);
+  }, [needFinanceData, extraTransactions, isDateInPeriod]);
+  const currentMonthShifts = useMemo(() => {
+    if (!needFinanceData) return [];
+    return adminShifts.filter((s) => isDateInPeriod(s.date));
+  }, [needFinanceData, adminShifts, isDateInPeriod]);
 
   const todaySettings = useMemo(() => {
     const today = new Date();
@@ -554,6 +583,37 @@ export default function OwnerSection({
   }, [finPeriodType, finSelectedDay, finStartDate, finEndDate, finMonth, finYear, monthsRussian]);
 
   const financials = useMemo(() => {
+    if (!needFinanceData) {
+      return {
+        totalVisitsWorkRevenues: 0,
+        totalVisitsMaterialsRevenues: 0,
+        totalSalonMaterialsRevenue: 0,
+        totalSolariumMinutes: 0,
+        totalSolariumMinsRevenues: 0,
+        totalSolariumCreamRevenues: 0,
+        totalSolariumStickersRevenues: 0,
+        totalSolariumMaterialsRevenue: 0,
+        totalMaterialsRevenue: 0,
+        materialsPurchaseExpenses: 0,
+        otherBillExpenses: 0,
+        totalSolariumGross: 0,
+        grossRevenue: 0,
+        adminsMonthlyWages: 0,
+        mastersPortionsWages: 0,
+        salonMaterialsConsumptionVal: 0,
+        totalAcquiringCommissionPaid: 0,
+        billExpenses: 0,
+        totalExpenses: 0,
+        netEarnings: 0,
+        cashlessGrossRevenue: 0,
+        cashlessAcquiringCommissions: 0,
+        cashlessNetRevenue: 0,
+        commissionPct: todaySettings.acquiringCommission,
+        grossRevenueExcludingMaterials: 0,
+        totalExpensesExcludingMaterials: 0,
+      };
+    }
+
     // Beauty work revenues (начисление: все визиты по workCost, независимо от способа оплаты)
     const totalVisitsWorkRevenues = currentMonthVisits.reduce((sum, v) => sum + v.workCost, 0);
     const totalVisitsMaterialsRevenues = currentMonthVisits.reduce((sum, v) => sum + v.materialsCost, 0);
@@ -678,7 +738,7 @@ export default function OwnerSection({
       grossRevenueExcludingMaterials,
       totalExpensesExcludingMaterials
     };
-  }, [currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, settingsRules, todaySettings, datesList, visits, solariumSessions, giftCertificates, debtRecords]);
+  }, [needFinanceData, currentMonthVisits, currentMonthSolarium, currentMonthExtraTxs, currentMonthShifts, employees, settingsRules, todaySettings, datesList, visits, solariumSessions, giftCertificates, debtRecords]);
 
   const {
     totalVisitsWorkRevenues,
@@ -710,7 +770,7 @@ export default function OwnerSection({
   } = financials;
 
   const periodComparison = useMemo(() => {
-    if (finPeriodType !== "month") return null;
+    if (!needFinanceData || finPeriodType !== "month") return null;
     const currentPrefix = `${finYear}-${(finMonth + 1).toString().padStart(2, "0")}-`;
     let prevMonth = finMonth - 1;
     let prevYear = finYear;
@@ -743,6 +803,7 @@ export default function OwnerSection({
     );
     return { current, previous, prevLabel: monthsRussian[prevMonth], currLabel: monthsRussian[finMonth] };
   }, [
+    needFinanceData,
     finPeriodType,
     finYear,
     finMonth,
@@ -1119,13 +1180,15 @@ export default function OwnerSection({
         total: m.total,
       }))
     );
-    // После CSV даём завершить download — иначе Electron часто отменяет print
+    // После CSV даём завершить download — иначе WebView часто отменяет print
     window.setTimeout(() => {
       handleGeneratePdfReport();
     }, 450);
   };
 
   const masterRevenueData = useMemo(() => {
+    if (!needMasterRevenue) return [];
+
     const revenueByMaster: Record<string, { work: number; materials: number; total: number; count: number }> = {};
     
     employees.forEach(emp => {
@@ -1168,9 +1231,11 @@ export default function OwnerSection({
       ...item,
       percentage: totalServiceRevenue > 0 ? Math.round((item.total / totalServiceRevenue) * 100) : 0
     }));
-  }, [currentMonthVisits, employees]);
+  }, [needMasterRevenue, currentMonthVisits, employees]);
 
   const dailyChartData = useMemo(() => {
+    if (!needRevenueChart) return [];
+
     const data = [];
     for (const dateStr of datesList) {
       const dayVisits = currentMonthVisits.filter(v => v.date === dateStr);
@@ -1214,10 +1279,10 @@ export default function OwnerSection({
       });
     }
     return data;
-  }, [currentMonthVisits, currentMonthSolarium, datesList, settingsRules, finPeriodType]);
+  }, [needRevenueChart, currentMonthVisits, currentMonthSolarium, datesList, settingsRules, finPeriodType]);
 
   const chartSummaries = useMemo(() => {
-    if (dailyChartData.length === 0) return { bestDayStr: "—", avgDayStr: "0 ₽" };
+    if (!needRevenueChart || dailyChartData.length === 0) return { bestDayStr: "—", avgDayStr: "0 ₽" };
     
     let maxRev = 0;
     let maxDay = "";
@@ -1237,9 +1302,11 @@ export default function OwnerSection({
       bestDayStr: maxRev > 0 ? `День ${maxDay} (${maxRev.toLocaleString()} ₽)` : "—",
       avgDayStr: `${Math.round(avg).toLocaleString()} ₽`
     };
-  }, [dailyChartData]);
+  }, [needRevenueChart, dailyChartData]);
 
   const dailyLedgerList = useMemo(() => {
+    if (!needDailyLedger) return [];
+
     const list = [];
     
     for (const dateStr of datesList) {
@@ -1331,9 +1398,10 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, settingsRules, giftCertificates, debtRecords]);
+  }, [needDailyLedger, visits, solariumSessions, adminShifts, extraTransactions, employees, datesList, settingsRules, giftCertificates, debtRecords]);
 
   const yearlyLedgerList = useMemo(() => {
+    if (!needYearlyLedger) return [];
     const list = [];
     
     for (let month = 0; month < 12; month++) {
@@ -1421,7 +1489,7 @@ export default function OwnerSection({
       });
     }
     return list;
-  }, [visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, settingsRules, giftCertificates, debtRecords]);
+  }, [needYearlyLedger, visits, solariumSessions, adminShifts, extraTransactions, employees, finYear, settingsRules, giftCertificates, debtRecords, monthsRussian]);
 
   const handleAddBill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2075,7 +2143,7 @@ export default function OwnerSection({
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" id="owner-revenue-chart-card" style={getBlockStyle("revenue-chart")}>
             <div className="flex items-center justify-between cursor-pointer select-none pb-2 border-b border-slate-50" onClick={() => toggleBlock("revenue-chart")}>
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-indigo-600 animate-pulse" />
+                <BarChart3 className={`h-5 w-5 text-indigo-600 ${isFinanceBlockOpen("revenue-chart") ? "animate-pulse" : ""}`} />
                 <h3 className="text-md font-bold text-slate-800">
                   Анализ динамики выручки по дням ({selectedPeriodTitle})
                 </h3>
@@ -2115,7 +2183,7 @@ export default function OwnerSection({
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" id="owner-master-revenue-distribution-card" style={getBlockStyle("master-revenue")}>
             <div className="flex items-center justify-between cursor-pointer select-none pb-2 border-b border-slate-50" onClick={() => toggleBlock("master-revenue")}>
               <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-indigo-600 animate-pulse" />
+                <Users className={`h-5 w-5 text-indigo-600 ${isFinanceBlockOpen("master-revenue") ? "animate-pulse" : ""}`} />
                 <h3 className="text-md font-bold text-slate-800 font-sans">
                   Распределение выручки между мастерами ({selectedPeriodTitle})
                 </h3>
@@ -3012,6 +3080,39 @@ export default function OwnerSection({
       {/* --- PANEL 3: TARIFFS & DAYS OF WEEK RATES --- */}
       {activeSubTab === "settings" && (
         <div className="space-y-8" id="subpanel-settings">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-ui-zoom-settings">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
+                <ZoomIn className="h-5 w-5 text-indigo-600" />
+                Масштаб интерфейса
+              </h3>
+              <span className="text-[11px] font-mono font-bold text-slate-500">{formatUiZoom(uiZoom)}</span>
+            </div>
+            <p className="text-xs text-slate-500 font-sans leading-relaxed">
+              Увеличьте или уменьшите весь интерфейс. Настройка сохраняется на этом компьютере и действует сразу.
+            </p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Масштаб интерфейса">
+              {UI_ZOOM_OPTIONS.map((opt) => {
+                const active = uiZoom === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => applyUiZoom(opt.value)}
+                    className={`min-w-[4.5rem] px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      active
+                        ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* General system rule edit matches Screenshot 7 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">

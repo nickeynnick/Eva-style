@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-eva-commands"
+description = "IPC-команды приложения Ева-стиль"
+commands.allow = [
+  "get_desktop_meta",
+  "store_load",
+  "store_save",
+  "get_data_store_info",
+  "open_data_store_folder",
+  "save_backup",
+  "auto_save_backup_cmd",
+  "check_for_updates",
+  "download_update",
+  "install_update",
+  "focus_window",
+  "write_crash_log_cmd",
+  "open_crash_logs",
+  "get_crash_logs_path"
+]

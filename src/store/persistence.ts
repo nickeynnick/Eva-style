@@ -164,7 +164,7 @@ export function persistAppStore(state: AppStoreState, immediate = false): void {
   }
 
   if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(write, 250);
+  persistTimer = setTimeout(write, 700);
 }
 
 export function flushAppStore(state: AppStoreState): void {

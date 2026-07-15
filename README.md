@@ -1,8 +1,8 @@
 # Ева-стиль — Учётный пульт
 
-**Версия 1.3.0** · Десктопное приложение для Windows для управления салоном красоты «Ева-стиль».
+**Версия 1.4.0** · Десктопное приложение для Windows (Tauri) для управления салоном красоты «Ева-стиль».
 
-Репозиторий: [github.com/nickeynnick/Eva-style](https://github.com/nickeynnick/Eva-style) · [Релиз v1.3.0](https://github.com/nickeynnick/Eva-style/releases/tag/v1.3.0)
+Репозиторий: [github.com/nickeynnick/Eva-style](https://github.com/nickeynnick/Eva-style) · [Релиз v1.4.0](https://github.com/nickeynnick/Eva-style/releases/tag/v1.4.0)
 
 ## Возможности
 
@@ -14,27 +14,22 @@
 - Раздел владелицы с настройками, отчётами CSV и паролем
 - Быстрый поиск клиентов, сертификатов и должников
 - Локальное хранение данных (SQLite в Windows-приложении + единый store с миграциями)
-- Тёмная тема
+- Тёмная тема и масштаб интерфейса
 - Экспорт и импорт резервных копий (JSON) с проверкой перед восстановлением
 - Автосохранение бэкапа в «Документы → Ева-стиль → Backups»
-- Автообновление через GitHub (установленная версия)
 
 ## Установка для пользователя
 
 ### Установщик (рекомендуется)
 
-1. Скачайте `eva-style-setup-1.3.0.exe` из [релизов на GitHub](https://github.com/nickeynnick/Eva-style/releases/tag/v1.3.0)
+1. Скачайте `eva-style-setup-1.4.0.exe` из [релизов на GitHub](https://github.com/nickeynnick/Eva-style/releases/tag/v1.4.0)
 2. Запустите файл и следуйте инструкциям мастера установки
 3. Запустите «Ева-стиль» с рабочего стола или из меню «Пуск»
 
-Установленная версия автоматически проверяет обновления при запуске.
-
 ### Портативная версия
 
-1. Скачайте `eva-style-1.3.0-portable.exe`
+1. Скачайте `eva-style-1.4.0-portable.exe`
 2. Запустите файл — установка не требуется
-
-> Портативная версия не поддерживает автообновление. Для обновления скачайте новый файл вручную.
 
 Все данные сохраняются локально на вашем компьютере (в установщике — в `Документы → Ева-стиль → Data`).
 
@@ -48,14 +43,16 @@
 
 ## Разработка
 
+Нужны: Node.js, [Rust](https://rustup.rs/), Visual Studio Build Tools (C++), WebView2.
+
 ```bash
 npm install
 npm run dev          # веб на http://127.0.0.1:3000
-npm run electron:dev # desktop + dev-сервер
+npm run tauri:dev    # десктоп (Tauri) + Vite
 npm run lint         # проверка TypeScript
 npm run test         # тесты расчётов
 npm run build        # сборка фронтенда
-npm run electron:build  # установщик Windows (папка release/)
+npm run tauri:build  # установщик Windows
 ```
 
 ## История изменений

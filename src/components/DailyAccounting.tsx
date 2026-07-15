@@ -71,7 +71,7 @@ interface DailyAccountingProps {
   showVisitChangeHistory?: boolean;
 }
 
-export default function DailyAccounting({
+function DailyAccounting({
   employees,
   visits,
   setVisits,
@@ -1847,3 +1847,5 @@ export default function DailyAccounting({
     </div>
   );
 }
+
+export default React.memo(DailyAccounting);

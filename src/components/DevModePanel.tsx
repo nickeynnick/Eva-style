@@ -443,7 +443,7 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
                     </div>
                   </>
                 ) : (
-                  <div>Сведения о файле недоступны (нужен Electron)</div>
+                  <div>Сведения о файле недоступны (нужно Windows-приложение)</div>
                 )}
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -578,7 +578,7 @@ export default function DevModePanel({ open, onClose }: DevModePanelProps) {
                 <DebugActionButton
                   icon={Save}
                   label="Принудительное автосохранение"
-                  hint="Сразу пишет файл в Документы → Ева-стиль → Backups (только Electron)"
+                  hint="Сразу пишет файл в Документы → Ева-стиль → Backups (только Windows-приложение)"
                   tone="emerald"
                   busy={busyAction}
                   onClick={() => void forceAutoBackup()}

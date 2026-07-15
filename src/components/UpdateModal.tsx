@@ -76,11 +76,92 @@ export function registerUpdateModalPreview(listener: PreviewListener | null): vo
   previewListener = listener;
 }
 
+type DesktopCheckApi = {
+  isDesktop?: boolean;
+  checkForUpdates?: () => Promise<{ status: string }>;
+};
+
+/**
+ * Ручная проверка обновлений (кнопка в Справке).
+ * Открывает UpdateModal; при статусах без событий (dev/portable/unavailable) показывает итог сразу.
+ */
+export async function checkForAppUpdates(): Promise<void> {
+  const api = (window as Window & { evaStyleDesktop?: DesktopCheckApi }).evaStyleDesktop;
+  if (!api?.isDesktop || !api.checkForUpdates) {
+    previewListener?.(
+      {
+        kind: "error",
+        phase: "check",
+        message:
+          "Проверка обновлений доступна только в установленной Windows-версии программы.",
+      },
+      false
+    );
+    return;
+  }
+
+  previewListener?.({ kind: "checking", currentVersion: APP_VERSION }, false);
+
+  try {
+    const result = await api.checkForUpdates();
+    const status = result?.status ?? "unavailable";
+
+    if (status === "checking") {
+      // Ждём события updater:event
+      return;
+    }
+
+    if (status === "dev") {
+      previewListener?.(
+        {
+          kind: "error",
+          phase: "check",
+          message: "В режиме разработки автообновление отключено.",
+        },
+        false
+      );
+      return;
+    }
+
+    if (status === "portable") {
+      previewListener?.(
+        {
+          kind: "error",
+          phase: "check",
+          message:
+            "В портативной версии обновления ставятся вручную: скачайте новый файл с GitHub.",
+        },
+        false
+      );
+      return;
+    }
+
+    previewListener?.(
+      {
+        kind: "error",
+        phase: "check",
+        message:
+          "Автообновление в этой сборке ещё не подключено. Скачайте новую версию с GitHub, если она уже опубликована.",
+      },
+      false
+    );
+  } catch (error) {
+    previewListener?.(
+      {
+        kind: "error",
+        phase: "check",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      false
+    );
+  }
+}
+
 const DEMO_RELEASE_NOTES = [
   "• Стилизованное окно обновления вместо системного диалога Windows",
   "• Прогресс загрузки прямо в окне приложения",
   "• Прокрутка длинного списка изменений",
-  "• Исправление путей к логотипу и звуку запуска в Electron (file://)",
+  "• Исправление путей к логотипу и звуку запуска в десктопной сборке",
   "• Мелкие правки учёта и интерфейса",
   "",
   "Дополнительно (для проверки прокрутки):",
@@ -223,7 +304,8 @@ export default function UpdateModal() {
   const [busy, setBusy] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
   const [githubStatus, setGithubStatus] = useState<GitHubStatusInfo | null>(null);
-  const showGithubStatus = phase?.kind === "checking" || phase?.kind === "error";
+  const showGithubStatus =
+    phase?.kind === "checking" || (phase?.kind === "error" && githubStatus != null);
 
   useEffect(() => {
     registerUpdateModalPreview((next, preview) => {

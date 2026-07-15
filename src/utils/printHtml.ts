@@ -3,7 +3,7 @@ import { restoreAppFocus } from "./restoreAppFocus";
 
 /**
  * Печать HTML через скрытый iframe.
- * Печать вызывается из родителя (не inline <script>) — так надёжнее в Electron при CSP.
+ * Печать вызывается из родителя (не inline <script>) — так надёжнее в десктопном WebView при CSP.
  */
 export function printHtmlDocument(html: string, options?: { cleanupMs?: number }): void {
   const cleanupMs = options?.cleanupMs ?? 120_000;

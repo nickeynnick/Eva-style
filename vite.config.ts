@@ -5,6 +5,7 @@ import path from 'path';
 
 export default defineConfig({
   base: './',
+  clearScreen: false,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -30,7 +31,9 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
+    host: "127.0.0.1",
   },
+  envPrefix: ["VITE_", "TAURI_"],
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

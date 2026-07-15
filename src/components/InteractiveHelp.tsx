@@ -14,10 +14,12 @@ import {
   ShieldCheck,
   LayoutGrid,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { faqs, HELP_CATEGORIES, CATEGORY_LABELS, HelpCategory } from "../data/helpContent";
 import { APP_CHANGELOG } from "../data/changelog";
 import { APP_VERSION } from "../data/appVersion";
+import { checkForAppUpdates } from "./UpdateModal";
 
 const CATEGORY_ICONS: Record<HelpCategory | "all", React.ComponentType<{ className?: string }>> = {
   all: BookOpen,
@@ -35,6 +37,17 @@ export default function InteractiveHelp() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+
+  const onCheckUpdates = async () => {
+    if (checkingUpdates) return;
+    setCheckingUpdates(true);
+    try {
+      await checkForAppUpdates();
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
 
   const filteredFaqs = faqs.filter((faq) => {
     const matchesCategory = activeCategory === "all" || faq.category === activeCategory;
@@ -90,11 +103,23 @@ export default function InteractiveHelp() {
           className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-3"
           id="help-whats-new"
         >
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-rose-500" />
-            <h3 className="text-sm font-extrabold text-slate-800">
-              Что нового · версия {APP_VERSION}
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-rose-500" />
+              <h3 className="text-sm font-extrabold text-slate-800">
+                Что нового · версия {APP_VERSION}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => void onCheckUpdates()}
+              disabled={checkingUpdates}
+              className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              id="help-check-updates-btn"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${checkingUpdates ? "animate-spin" : ""}`} />
+              {checkingUpdates ? "Проверяем…" : "Проверить обновления"}
+            </button>
           </div>
           <p className="text-[11px] text-slate-500">
             Тот же список, что в окне при обновлении. Полная история — в CHANGELOG проекта.

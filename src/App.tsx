@@ -3,7 +3,6 @@ import { installFocusTracker } from "./utils/restoreAppFocus";
 import {
   Download,
   Upload,
-  Clock,
   Bug,
 } from "lucide-react";
 import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
@@ -19,11 +18,11 @@ import {
 } from "./utils/devMode";
 import AppDialogHost from "./components/AppDialogHost";
 import GlobalSearch from "./components/GlobalSearch";
-import WelcomeOverlay from "./components/WelcomeOverlay";
 import ImportPreviewModal from "./components/ImportPreviewModal";
 import WhatsNewModal from "./components/WhatsNewModal";
 import UpdateModal from "./components/UpdateModal";
 import ThemeToggle from "./components/ThemeToggle";
+import HeaderClock from "./components/HeaderClock";
 import { getChangelogForVersion } from "./data/changelog";
 import { APP_VERSION } from "./data/appVersion";
 import { publicAsset } from "./utils/publicAsset";
@@ -36,6 +35,7 @@ import {
 
 import DailyAccounting from "./components/DailyAccounting";
 
+const WelcomeOverlay = lazy(() => import("./components/WelcomeOverlay"));
 const CertificatesAndDebts = lazy(() => import("./components/CertificatesAndDebts"));
 const ServiceCalculator = lazy(() => import("./components/ServiceCalculator"));
 const Solarium = lazy(() => import("./components/Solarium"));
@@ -93,9 +93,7 @@ export default function App() {
   };
   const [selectedDateUi, setSelectedDateUi] = useState(getTodayDateString);
 
-  const [timeStr, setTimeStr] = useState("");
-  const [dateStr, setDateStr] = useState("");
-  const [lastActivity, setLastActivity] = useState(Date.now());
+  const lastActivityRef = useRef(Date.now());
 
   const backupPayloadRef = useRef(buildBackupPayload);
   backupPayloadRef.current = buildBackupPayload;
@@ -121,17 +119,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setTimeStr(now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-      setDateStr(now.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }));
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     setMountedTabs((prev) => new Set(prev).add(activeTab));
   }, [activeTab]);
 
@@ -150,28 +137,31 @@ export default function App() {
 
   useEffect(() => {
     if (!preferences.keepOwnerUnlocked || !meta.ownerPassword || !isOwnerUnlocked) return;
-    const handleActivity = () => setLastActivity(Date.now());
-    window.addEventListener("mousemove", handleActivity);
-    window.addEventListener("keydown", handleActivity);
-    window.addEventListener("mousedown", handleActivity);
-    window.addEventListener("touchstart", handleActivity);
+    const touch = () => {
+      lastActivityRef.current = Date.now();
+    };
+    window.addEventListener("mousemove", touch, { passive: true });
+    window.addEventListener("keydown", touch);
+    window.addEventListener("mousedown", touch);
+    window.addEventListener("touchstart", touch, { passive: true });
     return () => {
-      window.removeEventListener("mousemove", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      window.removeEventListener("mousedown", handleActivity);
-      window.removeEventListener("touchstart", handleActivity);
+      window.removeEventListener("mousemove", touch);
+      window.removeEventListener("keydown", touch);
+      window.removeEventListener("mousedown", touch);
+      window.removeEventListener("touchstart", touch);
     };
   }, [preferences.keepOwnerUnlocked, meta.ownerPassword, isOwnerUnlocked]);
 
   useEffect(() => {
     if (!preferences.keepOwnerUnlocked || !meta.ownerPassword || !isOwnerUnlocked) return;
+    lastActivityRef.current = Date.now();
     const interval = setInterval(() => {
-      if (Date.now() - lastActivity >= preferences.autoLockDuration * 60 * 1000) {
+      if (Date.now() - lastActivityRef.current >= preferences.autoLockDuration * 60 * 1000) {
         setIsOwnerUnlocked(false);
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [preferences.keepOwnerUnlocked, meta.ownerPassword, isOwnerUnlocked, lastActivity, preferences.autoLockDuration]);
+  }, [preferences.keepOwnerUnlocked, meta.ownerPassword, isOwnerUnlocked, preferences.autoLockDuration]);
 
   useEffect(() => {
     if (!preferences.autoBackupEnabled) return;
@@ -231,6 +221,23 @@ export default function App() {
     [patch, getState]
   );
 
+  /** Стабильные сеттеры — одна функция на ключ на весь срок жизни bindSetter. */
+  const setVisits = useMemo(() => bindSetter("visits"), [bindSetter]);
+  const setExtraTransactions = useMemo(() => bindSetter("extraTransactions"), [bindSetter]);
+  const setDailyCash = useMemo(() => bindSetter("dailyCash"), [bindSetter]);
+  const setGiftCertificates = useMemo(() => bindSetter("giftCertificates"), [bindSetter]);
+  const setDebtRecords = useMemo(() => bindSetter("debtRecords"), [bindSetter]);
+  const setSolariumSessions = useMemo(() => bindSetter("solariumSessions"), [bindSetter]);
+  const setMasterTransactions = useMemo(() => bindSetter("masterTransactions"), [bindSetter]);
+  const setAdminShifts = useMemo(() => bindSetter("adminShifts"), [bindSetter]);
+  const setAdminPaidWages = useMemo(() => bindSetter("adminPaidWages"), [bindSetter]);
+  const setEmployees = useMemo(() => bindSetter("employees"), [bindSetter]);
+  const setSettingsRules = useMemo(() => bindSetter("settingsRules"), [bindSetter]);
+  const setMaterialPrices = useMemo(() => bindSetter("materialPrices"), [bindSetter]);
+  const setMaterialConsumptions = useMemo(() => bindSetter("materialConsumptions"), [bindSetter]);
+  const setAdminDaysRates = useMemo(() => bindSetter("adminDaysRates"), [bindSetter]);
+  const setAdminDaysRatesRules = useMemo(() => bindSetter("adminDaysRatesRules"), [bindSetter]);
+
   const handleResetApp = (mode: ResetAppMode) => {
     resetApp(mode);
     setSelectedDateUi(getTodayDateString());
@@ -279,7 +286,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800" id="eva_style_root">
       <AppDialogHost />
       <UpdateModal />
-      <WelcomeOverlay />
+      <Suspense fallback={null}>
+        <WelcomeOverlay />
+      </Suspense>
       {showWhatsNew && changelogEntry && (
         <WhatsNewModal
           entry={changelogEntry}
@@ -310,7 +319,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src={publicAsset("icon.png")}
+              src={publicAsset("icon-ui.png")}
               alt="Ева-стиль"
               className="h-8 w-8 rounded object-cover border border-rose-100 shadow-sm"
               width={32}
@@ -322,12 +331,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {timeStr && (
-              <div className="flex items-center gap-1.5 bg-rose-50/50 border border-rose-100/70 text-slate-700 text-xs py-1 px-2.5 rounded font-mono font-bold" id="header-clock-display">
-                <Clock className="h-3.5 w-3.5 text-rose-500" />
-                <span>{dateStr} {timeStr}</span>
-              </div>
-            )}
+            <HeaderClock />
             <button
               type="button"
               onClick={devModeEnabled ? () => setShowDevPanel(true) : onDevBadgeClick}
@@ -425,20 +429,20 @@ export default function App() {
             <DailyAccounting
               employees={state.employees}
               visits={state.visits}
-              setVisits={bindSetter("visits")}
+              setVisits={setVisits}
               solariumSessions={state.solariumSessions}
               extraTransactions={state.extraTransactions}
-              setExtraTransactions={bindSetter("extraTransactions")}
+              setExtraTransactions={setExtraTransactions}
               dailyCash={state.dailyCash}
-              setDailyCash={bindSetter("dailyCash")}
+              setDailyCash={setDailyCash}
               selectedDate={selectedDateUi}
               setSelectedDate={setSelectedDateUi}
               settingsRules={state.settingsRules}
               masterTransactions={state.masterTransactions}
               giftCertificates={state.giftCertificates}
-              setGiftCertificates={bindSetter("giftCertificates")}
+              setGiftCertificates={setGiftCertificates}
               debtRecords={state.debtRecords}
-              setDebtRecords={bindSetter("debtRecords")}
+              setDebtRecords={setDebtRecords}
               showDeletedVisits={preferences.showDeletedVisits}
               allowDeleteVisits={preferences.allowDeleteVisits}
               showVisitChangeHistory={preferences.showVisitChangeHistory}
@@ -451,9 +455,9 @@ export default function App() {
             <Suspense fallback={<TabFallback />}>
               <CertificatesAndDebts
                 giftCertificates={state.giftCertificates}
-                setGiftCertificates={bindSetter("giftCertificates")}
+                setGiftCertificates={setGiftCertificates}
                 debtRecords={state.debtRecords}
-                setDebtRecords={bindSetter("debtRecords")}
+                setDebtRecords={setDebtRecords}
                 selectedDate={selectedDateUi}
                 setSelectedDate={setSelectedDateUi}
                 allowDeleteCertificates={preferences.allowDeleteCertificates}
@@ -481,7 +485,7 @@ export default function App() {
             <Suspense fallback={<TabFallback />}>
               <Solarium
                 solariumSessions={state.solariumSessions}
-                setSolariumSessions={bindSetter("solariumSessions")}
+                setSolariumSessions={setSolariumSessions}
                 settingsRules={state.settingsRules}
                 selectedDate={selectedDateUi}
               />
@@ -496,7 +500,7 @@ export default function App() {
                 employees={state.employees}
                 visits={state.visits}
                 masterTransactions={state.masterTransactions}
-                setMasterTransactions={bindSetter("masterTransactions")}
+                setMasterTransactions={setMasterTransactions}
                 selectedDate={selectedDateUi}
                 adminShifts={state.adminShifts}
                 allowPayouts={preferences.allowMasterPayouts}
@@ -511,13 +515,13 @@ export default function App() {
               <AdminSalaries
                 employees={state.employees}
                 adminShifts={state.adminShifts}
-                setAdminShifts={bindSetter("adminShifts")}
+                setAdminShifts={setAdminShifts}
                 adminDaysRates={state.adminDaysRates}
                 adminDaysRatesRules={state.adminDaysRatesRules}
                 selectedDate={selectedDateUi}
                 allowAdminShiftEdits={preferences.allowAdminShiftEdits}
                 adminPaidWages={state.adminPaidWages}
-                setAdminPaidWages={bindSetter("adminPaidWages")}
+                setAdminPaidWages={setAdminPaidWages}
               />
             </Suspense>
           </div>
@@ -539,11 +543,11 @@ export default function App() {
               ) : (
                 <OwnerSection
                   employees={state.employees}
-                  setEmployees={bindSetter("employees")}
+                  setEmployees={setEmployees}
                   settingsRules={state.settingsRules}
-                  setSettingsRules={bindSetter("settingsRules")}
+                  setSettingsRules={setSettingsRules}
                   materialPrices={state.materialPrices}
-                  setMaterialPrices={bindSetter("materialPrices")}
+                  setMaterialPrices={setMaterialPrices}
                   materialPackaging={state.materialPackaging}
                   setMaterialPackaging={(v) => {
                     if (typeof v === "function") {
@@ -553,13 +557,13 @@ export default function App() {
                     }
                   }}
                   materialConsumptions={state.materialConsumptions}
-                  setMaterialConsumptions={bindSetter("materialConsumptions")}
+                  setMaterialConsumptions={setMaterialConsumptions}
                   adminDaysRates={state.adminDaysRates}
-                  setAdminDaysRates={bindSetter("adminDaysRates")}
+                  setAdminDaysRates={setAdminDaysRates}
                   adminDaysRatesRules={state.adminDaysRatesRules}
-                  setAdminDaysRatesRules={bindSetter("adminDaysRatesRules")}
+                  setAdminDaysRatesRules={setAdminDaysRatesRules}
                   extraTransactions={state.extraTransactions}
-                  setExtraTransactions={bindSetter("extraTransactions")}
+                  setExtraTransactions={setExtraTransactions}
                   visits={state.visits}
                   solariumSessions={state.solariumSessions}
                   adminShifts={state.adminShifts}

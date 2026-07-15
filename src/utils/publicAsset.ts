@@ -1,5 +1,5 @@
 /**
- * URL файла из public/dist — корректно и для Vite-dev, и для Electron loadFile (file://).
+ * URL файла из public/dist — корректно и для Vite-dev, и для десктопной сборки (asset/file).
  * Абсолютные пути вида "/icon.png" в file:// ломаются (ищут C:\icon.png).
  */
 export function publicAsset(file: string): string {

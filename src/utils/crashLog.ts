@@ -1,4 +1,4 @@
-/** Запись crash-логов в Electron (папка CrashLogs рядом с программой). */
+/** Запись crash-логов в десктоп-приложении (папка CrashLogs). */
 
 type CrashLogPayload = {
   kind?: string;
@@ -70,7 +70,7 @@ export async function getCrashLogsPath(): Promise<CrashLogResult> {
   }
 }
 
-/** Подписка на ошибки окна — всегда пишет файл в Electron (даже без режима разработчика). */
+/** Подписка на ошибки окна — всегда пишет файл в десктоп-приложении (даже без режима разработчика). */
 export function installCrashLogCapture(): void {
   window.addEventListener("error", (event) => {
     void writeCrashLog({

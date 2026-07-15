@@ -15,7 +15,7 @@ function playStartupSound(): void {
     const audio = new Audio(publicAsset("startup.mp3"));
     audio.volume = 0.85;
     void audio.play().catch(() => {
-      // В Electron обычно разрешено через autoplay-policy.
+      // В десктопном WebView автозапуск обычно разрешён.
     });
   } catch {
     // ignore
@@ -76,7 +76,7 @@ export default function WelcomeOverlay() {
             animate={{ rotate: 0, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.2, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <img src={publicAsset("icon.png")} alt="Ева-стиль" className="h-full w-full object-cover" width={80} height={80} />
+            <img src={publicAsset("icon-welcome.png")} alt="Ева-стиль" className="h-full w-full object-cover" width={80} height={80} />
           </motion.div>
 
           <motion.div

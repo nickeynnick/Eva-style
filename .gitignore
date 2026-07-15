@@ -1,9 +1,12 @@
 node_modules/
 dist/
 release/
+release-out/
 release-120/
 release-121/
 temp_extract/
+src-tauri/target/
+src-tauri/gen/
 .env
 .env.local
 *.log
