@@ -2,8 +2,8 @@ import { SettingsRule, SolariumSession } from "../types";
 
 export const DEFAULT_SETTINGS_RULE: SettingsRule = {
   id: "default-rule",
-  effectiveDate: "2020-01-01",
-  acquiringCommission: 3.5,
+  effectiveDate: "2026-06-01",
+  acquiringCommission: 4.5,
   adminBaseRate: 1500,
   solariumMinuteRate: 30,
 };

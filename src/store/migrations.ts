@@ -86,29 +86,29 @@ export function migrateMaterialConsumptions(
     lam.короткие.baseCost = 1000;
     lam.короткие.constant = 105;
     lam.средние = { ...lam.средние, baseCost: 1300, constant: 125 };
-    lam.удлиненные = { ...lam.удлиненные, baseCost: 1500, constant: 150 };
-    lam.длинные = { ...lam.длинные, baseCost: 1800, constant: 150 };
+    lam.удлиненные = { ...lam.удлиненные, baseCost: 1600, constant: 150 };
+    lam.длинные = { ...lam.длинные, baseCost: 2000, constant: 150 };
     modified = true;
   }
 
   const bioc = data.biocurl as Record<string, { baseCost?: number; constant?: number }> | undefined;
   if (bioc?.короткие && (bioc.короткие.baseCost === undefined || (bioc.короткие.constant ?? 0) > 200)) {
     bioc.короткие.baseCost = 1000;
-    bioc.короткие.constant = 100;
-    bioc.средние = { ...bioc.средние, baseCost: 1200, constant: 120 };
-    bioc.удлиненные = { ...bioc.удлиненные, baseCost: 1400, constant: 140 };
-    bioc.длинные = { ...bioc.длинные, baseCost: 1600, constant: 150 };
+    bioc.короткие.constant = 129;
+    bioc.средние = { ...bioc.средние, baseCost: 1200, constant: 138 };
+    bioc.удлиненные = { ...bioc.удлиненные, baseCost: 1500, constant: 174 };
+    bioc.длинные = { ...bioc.длинные, baseCost: 2000, constant: 209 };
     modified = true;
   }
   if (bioc && !bioc["частичная"]) {
     (bioc as Record<string, unknown>)["частичная"] = {
       shampoo: 5,
-      base: 4,
-      lotionOne: 10,
-      lotionTwo: 10,
-      cond: 10,
-      serum: 8,
-      constant: 80,
+      base: 5,
+      lotionOne: 0,
+      lotionTwo: 0,
+      cond: 3,
+      serum: 5,
+      constant: 129,
       baseCost: 800,
     };
     modified = true;

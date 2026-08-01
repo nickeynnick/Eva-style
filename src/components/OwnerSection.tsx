@@ -57,22 +57,21 @@ import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross
 import { AutoBackupInterval, usesPreferredBackupTime } from "../utils/backupData";
 import { AUTO_BACKUP_INTERVAL_OPTIONS } from "../utils/autoBackupRunner";
 import { hashPassword, verifyPassword } from "../utils/ownerPassword";
-import {
-  exportAdminShiftsCsv,
-  exportMasterPayrollCsv,
-  exportMonthlyRevenueCsv,
-  exportPeriodFinanceCsv,
-} from "../utils/csvExport";
 import { APP_VERSION } from "../data/appVersion";
 import { computeMonthMetrics, formatDelta } from "../utils/periodMetrics";
 import { showAppAlert } from "../utils/appDialog";
 import { printHtmlDocument } from "../utils/printHtml";
+import {
+  buildFinancePdfHtml,
+  type FinancePdfSections,
+} from "../utils/financePdfReport";
 import {
   UI_ZOOM_OPTIONS,
   applyUiZoom,
   formatUiZoom,
   useUiZoom,
 } from "../utils/uiZoom";
+import FinancePdfExportModal from "./FinancePdfExportModal";
 
 const LazyRevenueDayChart = lazy(() =>
   import("./OwnerFinanceCharts").then((m) => ({ default: m.RevenueDayChart }))
@@ -312,7 +311,7 @@ export default function OwnerSection({
   const needFinanceData = onFinanceTab;
   /** Диаграммы и большие таблицы — только когда блок развёрнут (иначе не считаем и не держим в памяти). */
   const needRevenueChart = onFinanceTab && isFinanceBlockOpen("revenue-chart");
-  const needMasterRevenue = onFinanceTab; // нужна и диаграмме, и CSV/PDF-экспорту
+  const needMasterRevenue = onFinanceTab; // нужна диаграмме и PDF-экспорту
   const needDailyLedger = onFinanceTab && isFinanceBlockOpen("detailed-daily-ledger");
   const needYearlyLedger = onFinanceTab && isFinanceBlockOpen("detailed-yearly-ledger");
 
@@ -436,6 +435,7 @@ export default function OwnerSection({
   const [finMonth, setFinMonth] = useState<number>(new Date().getMonth());
   const [finYear, setFinYear] = useState<number>(new Date().getFullYear());
   const [finPeriodType, setFinPeriodType] = useState<"today" | "month" | "custom" | "day">("today");
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   const [finSelectedDay, setFinSelectedDay] = useState<string>(() => {
     const d = new Date();
@@ -818,374 +818,6 @@ export default function OwnerSection({
     monthsRussian,
   ]);
 
-  const handleGeneratePdfReport = () => {
-    const masterRows =
-      masterRevenueData.length === 0
-        ? '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">Нет данных по мастерам за выбранный период</td></tr>'
-        : masterRevenueData
-            .map(
-              (m) => `
-        <tr>
-          <td><strong style="color: #0f172a;">${m.name}</strong></td>
-          <td><span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #991b1b;">${m.position}</span></td>
-          <td style="text-align: right; font-family: monospace; font-weight: 600;">${m.count}</td>
-          <td style="text-align: right; font-family: monospace; font-weight: 600;">${m.work.toLocaleString()} ₽</td>
-          <td style="text-align: right; font-family: monospace; font-weight: 600; color: #4f46e5;">${m.materials.toLocaleString()} ₽</td>
-          <td style="text-align: right; font-family: monospace; font-weight: 700; color: #1e293b;">${m.total.toLocaleString()} ₽</td>
-        </tr>
-      `
-            )
-            .join("");
-
-    const isPositive = totalMaterialsRevenue - materialsPurchaseExpenses >= 0;
-    const balanceSign = isPositive ? "+" : "";
-    const balanceColor = isPositive ? "#10b981" : "#ef4444";
-
-    const reportHtml = `
-      <!DOCTYPE html>
-      <html lang="ru">
-      <head>
-        <meta charset="utf-8">
-        <title>Финансовый отчет — Ева-стиль</title>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #1e293b;
-            padding: 40px;
-            margin: 0;
-            line-height: 1.5;
-            background: #fff;
-          }
-          .header-container {
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-          }
-          .title {
-            font-size: 24px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #0f172a;
-            margin: 0 0 5px 0;
-          }
-          .subtitle {
-            font-size: 14px;
-            color: #4f46e5;
-            margin: 0;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-          }
-          .meta-info {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #64748b;
-            margin-top: 15px;
-            font-family: monospace;
-            background: #f8fafc;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-          }
-          .section-title {
-            font-size: 13px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #4f46e5;
-            border-bottom: 2px solid #f1f5f9;
-            padding-bottom: 5px;
-            margin: 30px 0 15px 0;
-          }
-          .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 25px;
-          }
-          .stat-card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 15px;
-          }
-          .stat-label {
-            font-size: 11px;
-            color: #64748b;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-bottom: 6px;
-            letter-spacing: 0.5px;
-          }
-          .stat-val {
-            font-size: 20px;
-            font-weight: 800;
-            font-family: monospace;
-            color: #0f172a;
-          }
-          .stat-val.primary {
-            color: #4f46e5;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-            margin-bottom: 25px;
-            text-align: left;
-          }
-          th {
-            background-color: #f1f5f9;
-            color: #475569;
-            font-weight: 700;
-            padding: 10px 12px;
-            border: 1px solid #e2e8f0;
-            text-transform: uppercase;
-            font-size: 10px;
-            letter-spacing: 0.5px;
-          }
-          td {
-            padding: 10px 12px;
-            border: 1px solid #e2e8f0;
-            color: #334155;
-          }
-          tr:nth-child(even) {
-            background-color: #f8fafc;
-          }
-          .number-cell {
-            text-align: right;
-            font-family: monospace;
-            font-weight: 600;
-            font-size: 12px;
-          }
-          .totals-row td {
-            font-weight: 800;
-            background-color: #f1f5f9 !important;
-            color: #0f172a;
-            border-top: 2px solid #cbd5e1;
-          }
-          .footer-signature {
-            margin-top: 60px;
-            border-top: 1px dashed #cbd5e1;
-            padding-top: 20px;
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #64748b;
-          }
-          .signature-box {
-            text-align: center;
-          }
-          .signature-line {
-            width: 180px;
-            border-bottom: 1px solid #94a3b8;
-            margin-top: 25px;
-            margin-bottom: 5px;
-          }
-          @media print {
-            body { padding: 0; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header-container">
-          <h1 class="title">Сводный финансовый отчет</h1>
-          <p class="subtitle">Студия красоты «Ева-стиль» — консолидированные доходы и расход материалов</p>
-          <div class="meta-info">
-            <div>ПЕРИОД: <strong style="color: #0f172a;">${selectedPeriodTitle.toUpperCase()}</strong></div>
-            <div>СГЕНЕРИРОВАНО: <strong>${new Date().toLocaleString("ru-RU")}</strong></div>
-          </div>
-        </div>
-
-        <div class="stat-grid">
-          <div class="stat-card">
-            <div class="stat-label">Общая выручка за период (услуги + солярий)</div>
-            <div class="stat-val primary">+${grossRevenue.toLocaleString()} ₽</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label flex items-center">Финансовый результат по материалам</div>
-            <div class="stat-val" style="color: ${balanceColor};">
-              ${balanceSign}${(totalMaterialsRevenue - materialsPurchaseExpenses).toLocaleString()} ₽
-            </div>
-          </div>
-        </div>
-
-        <div class="section-title">1. Анализ доходности услуг и оборудования</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Источник выручки</th>
-              <th>Характеристика показателя</th>
-              <th class="number-cell">Сумма (₽)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Салонные услуги красоты</strong></td>
-              <td>Оплаты за парикмахерские работы, маникюр, макияж</td>
-              <td class="number-cell">+${totalVisitsWorkRevenues.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Поминутные сеансы солярия</strong></td>
-              <td>Общее время: ${totalSolariumMinutes} минут работы ламп</td>
-              <td class="number-cell">+${totalSolariumMinsRevenues.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Косметические средства солярия</strong></td>
-              <td>Продажи кремов, стикини, шапочек и комплектов</td>
-              <td class="number-cell">+${totalSolariumMaterialsRevenue.toLocaleString()} ₽</td>
-            </tr>
-            <tr class="totals-row">
-              <td><strong>СУММАРНАЯ ВЫРУЧКА</strong></td>
-              <td>Все услуги и солярий (без учета расходных материалов визитов)</td>
-              <td class="number-cell"><strong>+${grossRevenue.toLocaleString()} ₽</strong></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-title">2. Движение и расход материалов по складу</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Категория учета расхода</th>
-              <th>Описание операции учета</th>
-              <th class="number-cell">Стоимость (₽)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Расходные материалы визитов (Салон)</strong></td>
-              <td>Списание себестоимости материалов на оказание услуг клиентам</td>
-              <td class="number-cell" style="color: #4f46e5;">+${totalSalonMaterialsRevenue.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Материалы солярия (крема, стикини)</strong></td>
-              <td>Косметические средства солярия, выданные в сессиях</td>
-              <td class="number-cell" style="color: #4f46e5;">+${totalSolariumMaterialsRevenue.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Инвестиции в закупки расходников</strong></td>
-              <td>Регистрация накладных расходов по закупке товаров/материалов</td>
-              <td class="number-cell" style="color: #ef4444;">-${materialsPurchaseExpenses.toLocaleString()} ₽</td>
-            </tr>
-            <tr class="totals-row">
-              <td><strong>РЕЗУЛЬТАТ ПО МАТЕРИАЛАМ (Профицит / Дефицит склада)</strong></td>
-              <td>Потребление за вычетом прямых складских закупок за период</td>
-              <td class="number-cell" style="color: ${balanceColor};">
-                <strong>${balanceSign}${(totalMaterialsRevenue - materialsPurchaseExpenses).toLocaleString()} ₽</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-title">3. Расходы и чистый результат</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Статья</th>
-              <th>Описание</th>
-              <th class="number-cell">Сумма (₽)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Зарплаты администраторов</strong></td>
-              <td>Смены за период</td>
-              <td class="number-cell" style="color: #ef4444;">-${adminsMonthlyWages.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Доли мастеров</strong></td>
-              <td>Начисленные проценты от работы</td>
-              <td class="number-cell" style="color: #ef4444;">-${Math.round(mastersPortionsWages).toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Эквайринг</strong></td>
-              <td>Комиссия банка по безналу</td>
-              <td class="number-cell" style="color: #ef4444;">-${totalAcquiringCommissionPaid.toLocaleString()} ₽</td>
-            </tr>
-            <tr>
-              <td><strong>Прочие расходы</strong></td>
-              <td>Операционные минусы без закупки материалов</td>
-              <td class="number-cell" style="color: #ef4444;">-${otherBillExpenses.toLocaleString()} ₽</td>
-            </tr>
-            <tr class="totals-row">
-              <td><strong>ЧИСТЫЙ РЕЗУЛЬТАТ</strong></td>
-              <td>Выручка услуг − расходы (материалы отдельно)</td>
-              <td class="number-cell"><strong>${netEarnings.toLocaleString()} ₽</strong></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-title">4. Информация по мастерам и их потреблению</div>
-        <table>
-          <thead>
-            <tr>
-              <th>ФИО Сотрудника</th>
-              <th>Специализация</th>
-              <th class="number-cell">Количество визитов</th>
-              <th class="number-cell">Выручка за работу</th>
-              <th class="number-cell">Расход материалов (салон)</th>
-              <th class="number-cell">Всего с визитов</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${masterRows}
-          </tbody>
-        </table>
-
-        <div class="footer-signature">
-          <div>
-            Система учета ИС «Ева-стиль» v${APP_VERSION}<br>
-            Конфиденциальный документ для внутреннего использования владелицей.
-          </div>
-          <div class="signature-box">
-            <div class="signature-line"></div>
-            <div>Подпись владелицы салона</div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    printHtmlDocument(reportHtml);
-  };
-
-  const handleExportPeriodReport = () => {
-    exportPeriodFinanceCsv(
-      {
-        periodTitle: selectedPeriodTitle,
-        grossRevenueExcludingMaterials,
-        totalVisitsWorkRevenues,
-        totalSolariumMinsRevenues,
-        totalSalonMaterialsRevenue,
-        totalSolariumMaterialsRevenue,
-        materialsPurchaseExpenses,
-        adminsMonthlyWages,
-        mastersPortionsWages,
-        totalAcquiringCommissionPaid,
-        otherBillExpenses,
-        totalExpensesExcludingMaterials,
-        netEarnings,
-        cashlessGrossRevenue,
-        cashlessAcquiringCommissions,
-        cashlessNetRevenue,
-      },
-      masterRevenueData.map((m) => ({
-        name: m.name,
-        position: m.position,
-        count: m.count,
-        work: m.work,
-        materials: m.materials,
-        total: m.total,
-      }))
-    );
-    // После CSV даём завершить download — иначе WebView часто отменяет print
-    window.setTimeout(() => {
-      handleGeneratePdfReport();
-    }, 450);
-  };
-
   const masterRevenueData = useMemo(() => {
     if (!needMasterRevenue) return [];
 
@@ -1232,6 +864,42 @@ export default function OwnerSection({
       percentage: totalServiceRevenue > 0 ? Math.round((item.total / totalServiceRevenue) * 100) : 0
     }));
   }, [needMasterRevenue, currentMonthVisits, employees]);
+
+  const handleGeneratePdfReport = (sections: FinancePdfSections) => {
+    const reportHtml = buildFinancePdfHtml(
+      {
+        periodTitle: selectedPeriodTitle,
+        appVersion: APP_VERSION,
+        grossRevenue,
+        totalMaterialsRevenue,
+        materialsPurchaseExpenses,
+        totalVisitsWorkRevenues,
+        totalSolariumMinutes,
+        totalSolariumMinsRevenues,
+        totalSolariumMaterialsRevenue,
+        totalSalonMaterialsRevenue,
+        adminsMonthlyWages,
+        mastersPortionsWages,
+        totalAcquiringCommissionPaid,
+        otherBillExpenses,
+        netEarnings,
+        cashlessGrossRevenue,
+        cashlessAcquiringCommissions,
+        cashlessNetRevenue,
+        masters: masterRevenueData.map((m) => ({
+          name: m.name,
+          position: m.position,
+          count: m.count,
+          work: m.work,
+          materials: m.materials,
+          total: m.total,
+        })),
+      },
+      sections
+    );
+    setPdfExportOpen(false);
+    printHtmlDocument(reportHtml);
+  };
 
   const dailyChartData = useMemo(() => {
     if (!needRevenueChart) return [];
@@ -2115,26 +1783,17 @@ export default function OwnerSection({
               )}
             </div>
 
-            {/* Экспорт за выбранный период: CSV + PDF одной кнопкой */}
+            {/* Экспорт PDF за выбранный период */}
             <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-2 justify-center sm:justify-end">
               <button
                 type="button"
-                onClick={handleExportPeriodReport}
+                onClick={() => setPdfExportOpen(true)}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all active:scale-[0.98] border border-indigo-500 font-sans cursor-pointer"
-                id="generate-finance-period-export-btn"
-              >
-                <FileText className="h-4 w-4" />
-                <span>Экспорт CSV + PDF за период</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleGeneratePdfReport}
-                className="w-full sm:w-auto bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-200 font-sans cursor-pointer"
                 id="generate-finance-pdf-btn"
-                title="Только печать / сохранить как PDF"
+                title="Настроить и сохранить PDF"
               >
                 <Printer className="h-4 w-4" />
-                <span>Только PDF</span>
+                <span>Экспорт PDF за период</span>
               </button>
             </div>
           </div>
@@ -2207,48 +1866,6 @@ export default function OwnerSection({
           </div>
 
           {/* Инструменты (всегда сверху после периода) + настраиваемые блоки P&L / расходов */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-3" style={{ order: 0 }} id="owner-csv-export-card">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-rose-500" />
-                  Дополнительный экспорт (CSV)
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Сводный отчёт за выбранный выше период — кнопка «Экспорт CSV + PDF за период». Ниже — отдельные выгрузки по месяцу/году.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportMasterPayrollCsv(
-                        employees,
-                        visits,
-                        masterTransactions,
-                        monthPrefix
-                      )
-                    }
-                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900"
-                  >
-                    Ведомость мастеров
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportAdminShiftsCsv(employees, adminShifts, monthPrefix)}
-                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200"
-                  >
-                    Табель админов
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportMonthlyRevenueCsv(finYear, visits, solariumSessions, settingsRules)
-                    }
-                    className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-lg hover:bg-rose-100"
-                  >
-                    Выручка за {finYear}
-                  </button>
-                </div>
-              </div>
-
               {periodComparison && (
                 <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-3" style={{ order: 0 }} id="owner-period-comparison-card">
                   <h3 className="text-sm font-bold text-slate-800">
@@ -3645,7 +3262,7 @@ export default function OwnerSection({
                             <span className="text-blue-600 font-extrabold text-[11px] truncate">Баз. работа (Р):</span>
                             <input
                               type="number"
-                              value={laminationConfig.baseCost !== undefined ? laminationConfig.baseCost : (hairType === "короткие" ? 1000 : hairType === "средние" ? 1300 : hairType === "удлиненные" ? 1500 : 1800)}
+                              value={laminationConfig.baseCost !== undefined ? laminationConfig.baseCost : (hairType === "короткие" ? 1000 : hairType === "средние" ? 1300 : hairType === "удлиненные" ? 1600 : 2000)}
                               onChange={(e) => {
                                 const val = e.target.value === "" ? 0 : Number(e.target.value);
                                 setMaterialConsumptions((prev: any) => ({
@@ -3821,7 +3438,7 @@ export default function OwnerSection({
                             <span className="text-blue-600 font-extrabold text-[10px] truncate">Баз. работа (Р):</span>
                             <input
                               type="number"
-                              value={biocurlConfig.baseCost !== undefined ? biocurlConfig.baseCost : (hairType === "частичная" ? 800 : hairType === "короткие" ? 1000 : hairType === "средние" ? 1200 : hairType === "удлиненные" ? 1400 : 1600)}
+                              value={biocurlConfig.baseCost !== undefined ? biocurlConfig.baseCost : (hairType === "частичная" ? 800 : hairType === "короткие" ? 1000 : hairType === "средние" ? 1200 : hairType === "удлиненные" ? 1500 : 2000)}
                               onChange={(e) => {
                                 const val = e.target.value === "" ? 0 : Number(e.target.value);
                                 setMaterialConsumptions((prev: any) => ({
@@ -4688,6 +4305,25 @@ export default function OwnerSection({
           )}
         </div>
       )}
+
+      <FinancePdfExportModal
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        onConfirm={handleGeneratePdfReport}
+        periodTitle={selectedPeriodTitle}
+        finPeriodType={finPeriodType}
+        setFinPeriodType={setFinPeriodType}
+        finMonth={finMonth}
+        setFinMonth={setFinMonth}
+        finYear={finYear}
+        setFinYear={setFinYear}
+        finSelectedDay={finSelectedDay}
+        setFinSelectedDay={setFinSelectedDay}
+        finStartDate={finStartDate}
+        setFinStartDate={setFinStartDate}
+        finEndDate={finEndDate}
+        setFinEndDate={setFinEndDate}
+      />
     </div>
   );
 }

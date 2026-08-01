@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Download, X, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import ModalOverlay from "./ModalOverlay";
 import { APP_VERSION } from "../data/appVersion";
+import { writeCrashLog } from "../utils/crashLog";
 
 type UpdaterEvent =
   | { type: "checking"; currentVersion: string }
@@ -419,6 +420,12 @@ export default function UpdateModal() {
         case "error":
           setPhase({ kind: "error", phase: event.phase, message: event.message });
           setBusy(false);
+          void writeCrashLog({
+            kind:
+              event.phase === "download" ? "updater-download-error" : "updater-check-error",
+            message: event.message,
+            extra: { phase: event.phase, appVersion: APP_VERSION },
+          });
           break;
         default:
           break;

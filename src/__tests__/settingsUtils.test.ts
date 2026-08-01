@@ -17,7 +17,7 @@ describe("getActiveSettingsForDate", () => {
 
   it("returns default for empty rules", () => {
     const s = getActiveSettingsForDate([], "2025-01-01");
-    expect(s.acquiringCommission).toBe(3.5);
+    expect(s.acquiringCommission).toBe(4.5);
     expect(s.solariumMinuteRate).toBe(30);
   });
 

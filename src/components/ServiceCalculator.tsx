@@ -27,15 +27,15 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
     lamination: {
       короткие: { shampoo: 15, lotion: 10, mask: 10, gel: 45, constant: 105, baseCost: 1000 },
       средние: { shampoo: 20, lotion: 15, mask: 15, gel: 65, constant: 125, baseCost: 1300 },
-      удлиненные: { shampoo: 25, lotion: 20, mask: 20, gel: 120, constant: 150, baseCost: 1500 },
-      длинные: { shampoo: 30, lotion: 25, mask: 25, gel: 100, constant: 150, baseCost: 1800 }
+      удлиненные: { shampoo: 25, lotion: 20, mask: 20, gel: 120, constant: 150, baseCost: 1600 },
+      длинные: { shampoo: 30, lotion: 25, mask: 25, gel: 100, constant: 150, baseCost: 2000 }
     },
     biocurl: {
-      частичная: { shampoo: 5, base: 4, lotionOne: 10, lotionTwo: 10, cond: 10, serum: 8, constant: 80, baseCost: 800 },
-      короткие: { shampoo: 8, base: 6, lotionOne: 12, lotionTwo: 12, cond: 12, serum: 10, constant: 100, baseCost: 1000 },
-      средние: { shampoo: 12, base: 10, lotionOne: 15, lotionTwo: 15, cond: 20, serum: 15, constant: 120, baseCost: 1200 },
-      удлиненные: { shampoo: 15, base: 12, lotionOne: 18, lotionTwo: 18, cond: 22, serum: 18, constant: 140, baseCost: 1400 },
-      длинные: { shampoo: 18, base: 15, lotionOne: 20, lotionTwo: 20, cond: 25, serum: 20, constant: 150, baseCost: 1600 }
+      частичная: { shampoo: 5, base: 5, lotionOne: 0, lotionTwo: 0, cond: 3, serum: 5, constant: 129, baseCost: 800 },
+      короткие: { shampoo: 7, base: 7, lotionOne: 75, lotionTwo: 75, cond: 6, serum: 6, constant: 129, baseCost: 1000 },
+      средние: { shampoo: 12, base: 10, lotionOne: 150, lotionTwo: 150, cond: 7, serum: 10, constant: 138, baseCost: 1200 },
+      удлиненные: { shampoo: 20, base: 13, lotionOne: 140, lotionTwo: 140, cond: 10, serum: 13, constant: 174, baseCost: 1500 },
+      длинные: { shampoo: 24, base: 16, lotionOne: 220, lotionTwo: 220, cond: 15, serum: 16, constant: 209, baseCost: 2000 }
     }
   };
 
@@ -157,9 +157,9 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
     const shampooCost = (materialPrices.shampooProeditCurlFit || 6.0) * config.shampoo;
     const baseCostItem = (materialPrices.basePliaBase || 20.0) * config.base;
     const lotionOneCost = (materialPrices.lotionPliaStep1 || 13.34) * lotionQty;
-    const lotionTwoCost = (materialPrices.lotionPliaStep2 || 5.0) * lotionQty; // Quantity corresponds to Step 1 directly
-    const condCost = (materialPrices.conditionerPearl || 8.5) * config.cond;
-    const serumCost = (materialPrices.serumAfterPerm || 15.0) * config.serum;
+    const lotionTwoCost = (materialPrices.lotionPliaStep2 || 13.3475) * lotionQty; // Quantity corresponds to Step 1 directly
+    const condCost = (materialPrices.conditionerPearl || 8.3333) * config.cond;
+    const serumCost = (materialPrices.serumAfterPerm || 9.2) * config.serum;
     const laundryCost = config.constant;
 
     // Rule 4: промежуточный итог для био-завивки: (шампунь+база+кондиционер+сыворотка)*3+белье
@@ -201,7 +201,7 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
       },
       {
         name: "Лосьон для химической завивки волос Шаг 2 PLIA CURL 2",
-        unitPrice: materialPrices.lotionPliaStep2 || 5.0,
+        unitPrice: materialPrices.lotionPliaStep2 || 13.3475,
         unitName: "мл",
         consumption: lotionQty, 
         cost: lotionTwoCost,
@@ -209,7 +209,7 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
       },
       {
         name: "Кондиционер для волос Жемчужный PEARL COAT",
-        unitPrice: materialPrices.conditionerPearl || 8.5,
+        unitPrice: materialPrices.conditionerPearl || 8.3333,
         unitName: "мл",
         consumption: config.cond,
         cost: condCost,
@@ -217,7 +217,7 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
       },
       {
         name: "Сыворотка для волос PROEDIT CARE WORKS 1/AFTER PERM",
-        unitPrice: materialPrices.serumAfterPerm || 15.0,
+        unitPrice: materialPrices.serumAfterPerm || 9.2,
         unitName: "мл",
         consumption: config.serum,
         cost: serumCost,
@@ -353,7 +353,6 @@ export default function ServiceCalculator({ materialPrices, materialConsumptions
         <div className="space-y-3 pt-2">
           <div className="flex justify-between items-center">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Детализация сырья по стоимости</h4>
-            <span className="text-[10px] text-slate-400 font-medium font-sans">Коэффициент EXCEL исключен по вашему требованию</span>
           </div>
           
           <div className="overflow-x-auto rounded-xl border border-slate-100">

@@ -9,13 +9,18 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 
-const GITHUB_REPO: &str = "nickeynnick/Eva-style";
 /// Публичный файл релиза (без GitHub API — нет лимита 403).
 const LATEST_YML: &str =
     "https://github.com/nickeynnick/Eva-style/releases/latest/download/latest.yml";
+/// Atom-лента релизов — запасной канал, если CDN latest.yml отвечает 400/ошибкой.
+const RELEASES_ATOM: &str = "https://github.com/nickeynnick/Eva-style/releases.atom";
 const DOWNLOAD_BASE: &str =
     "https://github.com/nickeynnick/Eva-style/releases/latest/download";
+const DOWNLOAD_TAG_BASE: &str =
+    "https://github.com/nickeynnick/Eva-style/releases/download";
 const GH_STATUS: &str = "https://www.githubstatus.com/api/v2/status.json";
+/// Только ASCII: кириллица в User-Agent даёт HTTP 400 на части CDN/прокси.
+const USER_AGENT: &str = "Eva-style-updater/nickeynnick-Eva-style";
 
 #[derive(Default)]
 pub struct PendingUpdate {
@@ -104,9 +109,11 @@ fn is_newer(remote: &str, local: &str) -> bool {
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent(format!("Ева-стиль/{GITHUB_REPO}"))
+        .user_agent(USER_AGENT)
         .timeout(std::time::Duration::from_secs(60))
         .redirect(reqwest::redirect::Policy::limited(10))
+        // HTTP/2 + нестандартные заголовки иногда дают 400 на CDN релизов GitHub.
+        .http1_only()
         .build()
         .map_err(|e| e.to_string())
 }
@@ -169,6 +176,34 @@ fn parse_latest_yml(text: &str) -> Result<(String, String), String> {
     Ok((version.trim_start_matches('v').to_string(), file_name))
 }
 
+/// Достаёт тег из первого `<entry>` ленты releases.atom (`.../v1.4.2`).
+fn parse_releases_atom_version(atom: &str) -> Option<String> {
+    let entry = atom.split("<entry>").nth(1)?;
+    // <id>tag:github.com,2008:Repository/…/v1.4.2</id>
+    if let Some(id_rest) = entry.split("<id>").nth(1) {
+        let id = id_rest.split("</id>").next()?.trim();
+        if let Some(tag) = id.rsplit('/').next() {
+            let ver = tag.trim().trim_start_matches('v');
+            if parse_version(ver).is_some() {
+                return Some(ver.to_string());
+            }
+        }
+    }
+    // <link … href="https://github.com/…/releases/tag/v1.4.2"/>
+    if let Some(href_idx) = entry.find("/releases/tag/") {
+        let after = &entry[href_idx + "/releases/tag/".len()..];
+        let tag: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect();
+        let ver = tag.trim().trim_start_matches('v');
+        if parse_version(ver).is_some() {
+            return Some(ver.to_string());
+        }
+    }
+    None
+}
+
 async fn push_github_status(app: &AppHandle) {
     let client = match http_client() {
         Ok(c) => c,
@@ -194,7 +229,8 @@ async fn push_github_status(app: &AppHandle) {
                 "critical" => "GitHub: критический сбой".to_string(),
                 _ => format!("GitHub: {description}"),
             };
-            emit(                &app,
+            emit(
+                app,
                 UpdateEvent::GithubStatus {
                     reachable: true,
                     indicator,
@@ -204,7 +240,8 @@ async fn push_github_status(app: &AppHandle) {
             );
         }
         _ => {
-            emit(                &app,
+            emit(
+                app,
                 UpdateEvent::GithubStatus {
                     reachable: false,
                     indicator: "unknown".into(),
@@ -214,6 +251,66 @@ async fn push_github_status(app: &AppHandle) {
             );
         }
     }
+}
+
+async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<(reqwest::StatusCode, String), String> {
+    let response = client
+        .get(url)
+        .header("Accept", "*/*")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = response.status();
+    let text = response.text().await.map_err(|e| e.to_string())?;
+    Ok((status, text))
+}
+
+async fn fetch_latest_yml(client: &reqwest::Client) -> Result<(String, String), String> {
+    let mut last_err = String::new();
+    // Две попытки: intermittent 400 на CDN релизов GitHub.
+    for attempt in 1..=2 {
+        match fetch_text(client, LATEST_YML).await {
+            Ok((status, text)) if status.is_success() => {
+                return parse_latest_yml(&text);
+            }
+            Ok((status, text)) => {
+                let snippet: String = text.chars().take(120).collect();
+                last_err = format!(
+                    "Не удалось получить latest.yml (HTTP {status}). Попытка {attempt}/2. {snippet}"
+                );
+            }
+            Err(e) => {
+                last_err = format!("Не удалось скачать latest.yml с GitHub (попытка {attempt}/2): {e}");
+            }
+        }
+        if attempt == 1 {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+    }
+    Err(last_err)
+}
+
+async fn fetch_atom_version(client: &reqwest::Client) -> Result<String, String> {
+    let (status, text) = fetch_text(client, RELEASES_ATOM).await?;
+    if !status.is_success() {
+        return Err(format!(
+            "Не удалось получить список релизов (HTTP {status})."
+        ));
+    }
+    parse_releases_atom_version(&text).ok_or_else(|| {
+        "Не удалось разобрать номер версии из ленты релизов GitHub.".to_string()
+    })
+}
+
+fn installer_url(version: &str, file_name: Option<&str>) -> String {
+    if let Some(name) = file_name {
+        if name.starts_with("http://") || name.starts_with("https://") {
+            return name.to_string();
+        }
+        // Предпочитаем URL с явным тегом — стабильнее, чем /latest/download на CDN.
+        return format!("{DOWNLOAD_TAG_BASE}/v{version}/{name}");
+    }
+    format!("{DOWNLOAD_TAG_BASE}/v{version}/eva-style-setup-{version}.exe")
 }
 
 pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
@@ -241,49 +338,34 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         }
     };
 
-    let response = match client.get(LATEST_YML).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            emit(
-                &app,
-                UpdateEvent::Error {
-                    phase: "check".into(),
-                    message: format!("Не удалось скачать latest.yml с GitHub: {e}"),
-                },
-            );
-            return;
+    let remote = match fetch_latest_yml(&client).await {
+        Ok(v) => Ok(v),
+        Err(yml_err) => {
+            // Запасной канал: atom-лента. Если версии нет новее — не пугаем ошибкой CDN.
+            match fetch_atom_version(&client).await {
+                Ok(tag) => {
+                    if !is_newer(&tag, &current_version) {
+                        if manual {
+                            emit(
+                                &app,
+                                UpdateEvent::NotAvailable {
+                                    current_version: current_version.clone(),
+                                },
+                            );
+                        }
+                        return;
+                    }
+                    let file_name = format!("eva-style-setup-{tag}.exe");
+                    Ok((tag, file_name))
+                }
+                Err(atom_err) => Err(format!(
+                    "{yml_err}\nЗапасная проверка тоже не удалась: {atom_err}\nПроверьте, что релиз опубликован."
+                )),
+            }
         }
     };
 
-    if !response.status().is_success() {
-        emit(
-            &app,
-            UpdateEvent::Error {
-                phase: "check".into(),
-                message: format!(
-                    "Не удалось получить latest.yml (HTTP {}). Проверьте, что релиз опубликован.",
-                    response.status()
-                ),
-            },
-        );
-        return;
-    }
-
-    let text = match response.text().await {
-        Ok(t) => t,
-        Err(e) => {
-            emit(
-                &app,
-                UpdateEvent::Error {
-                    phase: "check".into(),
-                    message: format!("Не удалось прочитать latest.yml: {e}"),
-                },
-            );
-            return;
-        }
-    };
-
-    let (tag, file_name) = match parse_latest_yml(&text) {
+    let (tag, file_name) = match remote {
         Ok(v) => v,
         Err(message) => {
             emit(
@@ -309,12 +391,7 @@ pub async fn run_check(app: AppHandle, current_version: String, manual: bool) {
         return;
     }
 
-    let url = if file_name.starts_with("http://") || file_name.starts_with("https://") {
-        file_name
-    } else {
-        format!("{DOWNLOAD_BASE}/{file_name}")
-    };
-
+    let url = installer_url(&tag, Some(&file_name));
     let notes = format!("Доступна версия {tag}. После загрузки запустится установщик.");
 
     if let Some(state) = app.try_state::<PendingUpdateState>() {
@@ -344,7 +421,8 @@ pub async fn run_download(app: AppHandle) {
         let state = match app.try_state::<PendingUpdateState>() {
             Some(s) => s,
             None => {
-                emit(                    &app,
+                emit(
+                    &app,
                     UpdateEvent::Error {
                         phase: "download".into(),
                         message: "Нет данных об обновлении. Сначала выполните проверку.".into(),
@@ -356,7 +434,8 @@ pub async fn run_download(app: AppHandle) {
         let guard = match state.lock() {
             Ok(g) => g,
             Err(_) => {
-                emit(                    &app,
+                emit(
+                    &app,
                     UpdateEvent::Error {
                         phase: "download".into(),
                         message: "Состояние обновления занято.".into(),
@@ -368,7 +447,8 @@ pub async fn run_download(app: AppHandle) {
         match guard.as_ref() {
             Some(p) => (p.version.clone(), p.notes.clone(), p.url.clone()),
             None => {
-                emit(                    &app,
+                emit(
+                    &app,
                     UpdateEvent::Error {
                         phase: "download".into(),
                         message: "Нет данных об обновлении. Сначала выполните проверку.".into(),
@@ -385,7 +465,8 @@ pub async fn run_download(app: AppHandle) {
     let client = match http_client() {
         Ok(c) => c,
         Err(message) => {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "download".into(),
                     message,
@@ -395,21 +476,40 @@ pub async fn run_download(app: AppHandle) {
         }
     };
 
-    let response = match client.get(&url).send().await {
+    let response = match client
+        .get(&url)
+        .header("Accept", "application/octet-stream")
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
-            emit(                &app,
-                UpdateEvent::Error {
-                    phase: "download".into(),
-                    message: format!("Не удалось начать загрузку: {e}"),
-                },
-            );
-            return;
+            // Fallback на /latest/download/…
+            let fallback = format!("{DOWNLOAD_BASE}/eva-style-setup-{version}.exe");
+            match client
+                .get(&fallback)
+                .header("Accept", "application/octet-stream")
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => {
+                    emit(
+                        &app,
+                        UpdateEvent::Error {
+                            phase: "download".into(),
+                            message: format!("Не удалось начать загрузку: {e}"),
+                        },
+                    );
+                    return;
+                }
+            }
         }
     };
 
     if !response.status().is_success() {
-        emit(            &app,
+        emit(
+            &app,
             UpdateEvent::Error {
                 phase: "download".into(),
                 message: format!("Ошибка загрузки установщика (HTTP {}).", response.status()),
@@ -422,7 +522,8 @@ pub async fn run_download(app: AppHandle) {
     let mut stream = response.bytes_stream();
     let tmp_dir = std::env::temp_dir().join("eva-style-update");
     if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
-        emit(            &app,
+        emit(
+            &app,
             UpdateEvent::Error {
                 phase: "download".into(),
                 message: e.to_string(),
@@ -434,7 +535,8 @@ pub async fn run_download(app: AppHandle) {
     let mut file = match File::create(&file_path) {
         Ok(f) => f,
         Err(e) => {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "download".into(),
                     message: e.to_string(),
@@ -452,7 +554,8 @@ pub async fn run_download(app: AppHandle) {
         let chunk = match chunk {
             Ok(c) => c,
             Err(e) => {
-                emit(                    &app,
+                emit(
+                    &app,
                     UpdateEvent::Error {
                         phase: "download".into(),
                         message: format!("Сбой загрузки: {e}"),
@@ -462,7 +565,8 @@ pub async fn run_download(app: AppHandle) {
             }
         };
         if let Err(e) = file.write_all(&chunk) {
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Error {
                     phase: "download".into(),
                     message: e.to_string(),
@@ -478,7 +582,8 @@ pub async fn run_download(app: AppHandle) {
             } else {
                 0.0
             };
-            emit(                &app,
+            emit(
+                &app,
                 UpdateEvent::Progress {
                     percent,
                     transferred,
@@ -498,7 +603,8 @@ pub async fn run_download(app: AppHandle) {
         }
     }
 
-    emit(        &app,
+    emit(
+        &app,
         UpdateEvent::Downloaded {
             version,
             release_notes: notes,
@@ -533,4 +639,43 @@ pub fn run_install(app: AppHandle) -> Result<(), String> {
     }
     app.exit(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_latest_yml() {
+        let yml = r#"version: 1.4.2
+files:
+  - url: eva-style-setup-1.4.2.exe
+    sha512: abc
+    size: 1
+path: eva-style-setup-1.4.2.exe
+"#;
+        let (v, f) = parse_latest_yml(yml).unwrap();
+        assert_eq!(v, "1.4.2");
+        assert_eq!(f, "eva-style-setup-1.4.2.exe");
+    }
+
+    #[test]
+    fn parses_atom_version() {
+        let atom = r#"<?xml version="1.0"?>
+<feed>
+  <entry>
+    <id>tag:github.com,2008:Repository/1296340090/v1.4.2</id>
+    <link rel="alternate" href="https://github.com/nickeynnick/Eva-style/releases/tag/v1.4.2"/>
+    <title>Ева-стиль 1.4.2</title>
+  </entry>
+</feed>"#;
+        assert_eq!(parse_releases_atom_version(atom).as_deref(), Some("1.4.2"));
+    }
+
+    #[test]
+    fn version_compare() {
+        assert!(is_newer("1.4.3", "1.4.2"));
+        assert!(!is_newer("1.4.2", "1.4.2"));
+        assert!(!is_newer("1.4.1", "1.4.2"));
+    }
 }

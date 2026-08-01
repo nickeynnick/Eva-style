@@ -87,8 +87,8 @@ export const INITIAL_EMPLOYEES: Employee[] = [
 export const INITIAL_SETTINGS_RULES: SettingsRule[] = [
   {
     id: "rule-1",
-    effectiveDate: "2020-01-01",
-    acquiringCommission: 3.5,
+    effectiveDate: "2026-06-01",
+    acquiringCommission: 4.5,
     adminBaseRate: 1500,
     solariumMinuteRate: 30
   }
@@ -98,13 +98,13 @@ export const INITIAL_RAW_MATERIAL_PRICES: RawMaterialPrices = {
   shampooProscenia: 6.222,
   lotionAcPretreatment: 4.991,
   laminatingGel: 12.0,
-  maskProscenia: 5.5,
+  maskProscenia: 5.3878,
   shampooProeditCurlFit: 6.0,
   basePliaBase: 20.0,
   lotionPliaStep1: 13.3475,
-  lotionPliaStep2: 5.0,
-  conditionerPearl: 8.5,
-  serumAfterPerm: 15.0
+  lotionPliaStep2: 13.3475,
+  conditionerPearl: 8.3333,
+  serumAfterPerm: 9.2
 };
 
 export const INITIAL_ADMIN_DAYS_RATES: AdminDayOfWeekRate = {
@@ -137,24 +137,24 @@ export const INITIAL_MATERIAL_PACKAGING: Record<string, { price: number; volume:
   shampooProeditCurlFit: { price: 1500, volume: 250 },
   basePliaBase: { price: 5000, volume: 250 },
   lotionPliaStep1: { price: 5339, volume: 400 },
-  lotionPliaStep2: { price: 2000, volume: 400 },
-  conditionerPearl: { price: 4250, volume: 500 },
-  serumAfterPerm: { price: 3000, volume: 200 },
+  lotionPliaStep2: { price: 5339, volume: 400 },
+  conditionerPearl: { price: 10000, volume: 1200 },
+  serumAfterPerm: { price: 4600, volume: 500 },
 };
 
 export const INITIAL_MATERIAL_CONSUMPTIONS = {
   lamination: {
     короткие: { shampoo: 15, lotion: 10, mask: 10, gel: 45, constant: 105, baseCost: 1000 },
     средние: { shampoo: 20, lotion: 15, mask: 15, gel: 65, constant: 125, baseCost: 1300 },
-    удлиненные: { shampoo: 25, lotion: 20, mask: 20, gel: 120, constant: 150, baseCost: 1500 },
-    длинные: { shampoo: 30, lotion: 25, mask: 25, gel: 100, constant: 150, baseCost: 1800 },
+    удлиненные: { shampoo: 25, lotion: 20, mask: 20, gel: 120, constant: 150, baseCost: 1600 },
+    длинные: { shampoo: 30, lotion: 25, mask: 25, gel: 100, constant: 150, baseCost: 2000 },
   },
   biocurl: {
-    частичная: { shampoo: 5, base: 4, lotionOne: 10, lotionTwo: 10, cond: 10, serum: 8, constant: 80, baseCost: 800 },
-    короткие: { shampoo: 8, base: 6, lotionOne: 12, lotionTwo: 12, cond: 12, serum: 10, constant: 100, baseCost: 1000 },
-    средние: { shampoo: 12, base: 10, lotionOne: 15, lotionTwo: 15, cond: 20, serum: 15, constant: 120, baseCost: 1200 },
-    удлиненные: { shampoo: 15, base: 12, lotionOne: 18, lotionTwo: 18, cond: 22, serum: 18, constant: 140, baseCost: 1400 },
-    длинные: { shampoo: 18, base: 15, lotionOne: 20, lotionTwo: 20, cond: 25, serum: 20, constant: 150, baseCost: 1600 },
+    частичная: { shampoo: 5, base: 5, lotionOne: 0, lotionTwo: 0, cond: 3, serum: 5, constant: 129, baseCost: 800 },
+    короткие: { shampoo: 7, base: 7, lotionOne: 75, lotionTwo: 75, cond: 6, serum: 6, constant: 129, baseCost: 1000 },
+    средние: { shampoo: 12, base: 10, lotionOne: 150, lotionTwo: 150, cond: 7, serum: 10, constant: 138, baseCost: 1200 },
+    удлиненные: { shampoo: 20, base: 13, lotionOne: 140, lotionTwo: 140, cond: 10, serum: 13, constant: 174, baseCost: 1500 },
+    длинные: { shampoo: 24, base: 16, lotionOne: 220, lotionTwo: 220, cond: 15, serum: 16, constant: 209, baseCost: 2000 },
   },
 };
 
