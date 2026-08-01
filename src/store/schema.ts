@@ -35,6 +35,10 @@ export interface AppPreferences {
   autoBackupInterval: AutoBackupInterval;
   /** Предпочтительное локальное время «ЧЧ:ММ» для daily/weekly/monthly. */
   autoBackupPreferredTime: string;
+  /** Бета: разрешить AI-помощнику предлагать изменения данных (с подтверждением). */
+  deepSeekWriteEnabled: boolean;
+  /** Модель DeepSeek API. */
+  deepSeekModel: string;
 }
 
 export interface AppStoreMeta {
@@ -42,6 +46,8 @@ export interface AppStoreMeta {
   ownerPassword: string;
   lastAutoBackupDate: string | null;
   seenAppVersion: string | null;
+  /** Ключ DeepSeek API (не попадает в JSON-бэкап вместе с meta). */
+  deepSeekApiKey: string;
 }
 
 export interface AppStoreState {

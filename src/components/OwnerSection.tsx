@@ -141,6 +141,10 @@ interface OwnerSectionProps {
   autoBackupPreferredTime?: string;
   setAutoBackupPreferredTime?: (val: string) => void;
   lastAutoBackupDate?: string | null;
+  deepSeekApiKey?: string;
+  setDeepSeekApiKey?: (val: string) => void;
+  deepSeekWriteEnabled?: boolean;
+  setDeepSeekWriteEnabled?: (val: boolean) => void;
   onLock?: () => void;
   onResetApp?: (mode: "preserveTariffs" | "full") => void;
 }
@@ -197,6 +201,10 @@ export default function OwnerSection({
   autoBackupPreferredTime = "18:00",
   setAutoBackupPreferredTime = () => {},
   lastAutoBackupDate = null,
+  deepSeekApiKey = "",
+  setDeepSeekApiKey = () => {},
+  deepSeekWriteEnabled = false,
+  setDeepSeekWriteEnabled = () => {},
   onLock = () => {},
   onResetApp,
 }: OwnerSectionProps) {
@@ -204,9 +212,28 @@ export default function OwnerSection({
   const [activeSubTab, setActiveSubTab] = useState<"employees" | "finance" | "settings" | "stats" | "security">("employees");
   const [confirmResetMode, setConfirmResetMode] = useState<ResetAppMode | null>(null);
   const [resetConfirmWord, setResetConfirmWord] = useState("");
+  const [showDeepSeekKey, setShowDeepSeekKey] = useState(false);
   const themeMode = useThemeMode();
   const chartColors = useMemo(() => getThemeChartColors(), [themeMode]);
   const uiZoom = useUiZoom();
+
+  useEffect(() => {
+    const onOwnerNav = (event: Event) => {
+      const detail = (event as CustomEvent<{ subTab?: string }>).detail;
+      const sub = detail?.subTab;
+      if (
+        sub === "employees" ||
+        sub === "finance" ||
+        sub === "settings" ||
+        sub === "stats" ||
+        sub === "security"
+      ) {
+        setActiveSubTab(sub);
+      }
+    };
+    window.addEventListener("eva-style-owner-nav", onOwnerNav);
+    return () => window.removeEventListener("eva-style-owner-nav", onOwnerNav);
+  }, []);
 
   const startReset = (mode: ResetAppMode) => {
     setConfirmResetMode(mode);
@@ -4205,6 +4232,76 @@ export default function OwnerSection({
                   )}
                 </>
               )}
+            </div>
+          </div>
+
+          {/* AI assistant (DeepSeek beta) */}
+          <div className="bg-white p-6 rounded-2xl border border-violet-100 shadow-sm space-y-4" id="owner-deepseek-panel">
+            <div className="flex items-center gap-2 border-b border-violet-50 pb-3">
+              <Sparkles className="h-5 w-5 text-violet-600" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-slate-900">AI-помощник DeepSeek</h4>
+                  <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                    бета
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Чат доступен всем из шапки. Нужен интернет и ваш API-ключ DeepSeek. Ключ не входит в JSON-резервную копию.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block" htmlFor="deepseek-api-key">
+                API-ключ DeepSeek
+              </label>
+              <div className="relative">
+                <input
+                  id="deepseek-api-key"
+                  type={showDeepSeekKey ? "text" : "password"}
+                  value={deepSeekApiKey}
+                  onChange={(e) => setDeepSeekApiKey(e.target.value)}
+                  placeholder="sk-…"
+                  className="w-full px-3 py-2.5 pr-10 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowDeepSeekKey((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
+                  title={showDeepSeekKey ? "Скрыть" : "Показать"}
+                >
+                  {showDeepSeekKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-rose-50/60 rounded-xl border border-rose-100">
+              <div className="space-y-0.5 pr-2">
+                <span className="text-xs font-bold text-slate-800 block text-left">
+                  Разрешить помощнику изменять данные
+                </span>
+                <span className="text-[11px] text-rose-700/90 block font-sans text-left">
+                  По умолчанию выключено. При включении помощник может предложить изменения (визиты, солярий,
+                  доп. операции, тарифы, прайс сырья и др.) — каждое действие нужно подтвердить вручную. Журнал
+                  действий пишется в CrashLogs (Windows-приложение).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeepSeekWriteEnabled(!deepSeekWriteEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  deepSeekWriteEnabled ? "bg-rose-500" : "bg-slate-300"
+                }`}
+                id="toggle-deepseek-write"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    deepSeekWriteEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
           </div>
 

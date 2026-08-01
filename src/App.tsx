@@ -4,6 +4,7 @@ import {
   Download,
   Upload,
   Bug,
+  Bot,
 } from "lucide-react";
 import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
 import { AUTO_BACKUP_KEEP_LAST, shouldRunAutoBackup, serializeBackup } from "./utils/backupData";
@@ -23,6 +24,7 @@ import WhatsNewModal from "./components/WhatsNewModal";
 import UpdateModal from "./components/UpdateModal";
 import ThemeToggle from "./components/ThemeToggle";
 import HeaderClock from "./components/HeaderClock";
+import AiAssistantPanel from "./components/AiAssistantPanel";
 import { getChangelogForVersion } from "./data/changelog";
 import { APP_VERSION } from "./data/appVersion";
 import { publicAsset } from "./utils/publicAsset";
@@ -65,6 +67,7 @@ export default function App() {
   const [isOwnerUnlocked, setIsOwnerUnlocked] = useState(false);
   const [importPreview, setImportPreview] = useState<ReturnType<typeof validateBackupImport> | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [devModeEnabled, setDevModeEnabledState] = useState(() => isDevModeEnabled());
   const [showDevPanel, setShowDevPanel] = useState(false);
 
@@ -314,6 +317,25 @@ export default function App() {
           <DevModePanel open={showDevPanel} onClose={() => setShowDevPanel(false)} />
         </Suspense>
       )}
+      <AiAssistantPanel
+        open={aiAssistantOpen}
+        onClose={() => setAiAssistantOpen(false)}
+        selectedJournalDate={selectedDateUi}
+        onNavigate={({ tab, journalDate, ownerSection }) => {
+          if (journalDate) setSelectedDateUi(journalDate);
+          if (tab) {
+            setActiveTab(tab);
+            setMountedTabs((prev) => new Set(prev).add(tab));
+          }
+          if (ownerSection && typeof window !== "undefined") {
+            window.setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("eva-style-owner-nav", { detail: { subTab: ownerSection } })
+              );
+            }, 50);
+          }
+        }}
+      />
 
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm" id="app-header-bar">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
@@ -365,6 +387,19 @@ export default function App() {
               )}
             </button>
             <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => setAiAssistantOpen(true)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-700 border border-violet-200 bg-violet-50 rounded hover:bg-violet-100"
+              title="AI-помощник DeepSeek (бета)"
+              id="ai-assistant-header-btn"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">AI</span>
+              <span className="text-[8px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1 py-0.5 rounded">
+                бета
+              </span>
+            </button>
             <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
               <GlobalSearch
                 visits={state.visits}
@@ -600,6 +635,10 @@ export default function App() {
                   autoBackupPreferredTime={preferences.autoBackupPreferredTime}
                   setAutoBackupPreferredTime={(v) => setPreference("autoBackupPreferredTime", v)}
                   lastAutoBackupDate={meta.lastAutoBackupDate}
+                  deepSeekApiKey={meta.deepSeekApiKey}
+                  setDeepSeekApiKey={(v) => setMeta({ deepSeekApiKey: v })}
+                  deepSeekWriteEnabled={preferences.deepSeekWriteEnabled}
+                  setDeepSeekWriteEnabled={(v) => setPreference("deepSeekWriteEnabled", v)}
                   onLock={() => setIsOwnerUnlocked(false)}
                   onResetApp={handleResetApp}
                 />

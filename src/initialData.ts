@@ -186,4 +186,6 @@ export const DEFAULT_APP_PREFERENCES = {
   autoBackupEnabled: true,
   autoBackupInterval: "weekly" as import("./utils/backupData").AutoBackupInterval,
   autoBackupPreferredTime: "18:00",
+  deepSeekWriteEnabled: false,
+  deepSeekModel: "deepseek-chat",
 };

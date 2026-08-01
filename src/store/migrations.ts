@@ -53,6 +53,7 @@ export function createDefaultState(appInitialized: boolean): AppStoreState {
       ownerPassword: "",
       lastAutoBackupDate: null,
       seenAppVersion: null,
+      deepSeekApiKey: "",
     },
   };
 }
@@ -210,6 +211,13 @@ export function applyStoreMigrations(state: AppStoreState): AppStoreState {
     autoBackupPreferredTime: normalizeAutoBackupPreferredTime(
       next.preferences?.autoBackupPreferredTime
     ),
+    deepSeekWriteEnabled: next.preferences?.deepSeekWriteEnabled ?? false,
+    deepSeekModel: next.preferences?.deepSeekModel || DEFAULT_APP_PREFERENCES.deepSeekModel,
+  };
+
+  next.meta = {
+    ...next.meta,
+    deepSeekApiKey: next.meta?.deepSeekApiKey ?? "",
   };
 
   next.materialConsumptions = migrateMaterialConsumptions(
