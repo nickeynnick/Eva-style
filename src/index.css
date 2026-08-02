@@ -3,6 +3,140 @@
 @tailwind utilities;
 
 /* -------------------------------------------------------------------------
+   Размер шрифта (Владелица → Настройки): только текст, в т.ч. мелкий text-[Npx].
+   Отдельно от «Масштаб интерфейса» (CSS zoom), чтобы не раздувать отступы/кнопки.
+   ------------------------------------------------------------------------- */
+html {
+  --eva-font-scale: 1;
+}
+
+@keyframes evaSplashBar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Лёгкий режим / reduced-motion: без бесконечных анимаций */
+html[data-eva-lite] .animate-ping,
+html[data-eva-lite] .animate-pulse,
+html[data-eva-lite] .animate-\[evaSplashBar_1\.4s_ease-in-out_forwards\] {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping,
+  .animate-pulse,
+  .animate-\[evaSplashBar_1\.4s_ease-in-out_forwards\] {
+    animation: none !important;
+  }
+}
+
+html[data-eva-font-scale] body,
+html[data-eva-font-scale] #eva_style_root {
+  font-size: calc(1rem * var(--eva-font-scale));
+}
+
+html[data-eva-font-scale] .text-xs {
+  font-size: calc(0.75rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-sm {
+  font-size: calc(0.875rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-base {
+  font-size: calc(1rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-lg {
+  font-size: calc(1.125rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-xl {
+  font-size: calc(1.25rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-2xl {
+  font-size: calc(1.5rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-3xl {
+  font-size: calc(1.875rem * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-4xl {
+  font-size: calc(2.25rem * var(--eva-font-scale)) !important;
+}
+
+html[data-eva-font-scale] .text-\[8px\] {
+  font-size: calc(8px * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-\[9px\] {
+  font-size: calc(9px * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-\[10px\] {
+  font-size: calc(10px * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-\[11px\] {
+  font-size: calc(11px * var(--eva-font-scale)) !important;
+}
+html[data-eva-font-scale] .text-\[12px\] {
+  font-size: calc(12px * var(--eva-font-scale)) !important;
+}
+
+@media (min-width: 640px) {
+  html[data-eva-font-scale] .sm\:text-xs {
+    font-size: calc(0.75rem * var(--eva-font-scale)) !important;
+  }
+  html[data-eva-font-scale] .sm\:text-sm {
+    font-size: calc(0.875rem * var(--eva-font-scale)) !important;
+  }
+}
+
+/* Крупный шрифт: не даём тексту налезать на соседние элементы */
+html[data-eva-font-scale] #eva_style_root {
+  /* Не clip: иначе absolute/fixed-попапы календаря обрезаются */
+  overflow-x: visible;
+}
+
+html[data-eva-font-scale] button,
+html[data-eva-font-scale] label,
+html[data-eva-font-scale] a,
+html[data-eva-font-scale] input,
+html[data-eva-font-scale] select,
+html[data-eva-font-scale] textarea {
+  line-height: 1.35;
+}
+
+html[data-eva-font-scale] .leading-none {
+  line-height: 1.25 !important;
+}
+
+html[data-eva-font-scale] #app-header-bar,
+html[data-eva-font-scale] #tabs-navigation-panel,
+html[data-eva-font-scale] #app-footer {
+  line-height: 1.35;
+}
+
+html[data-eva-font-scale] table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+html[data-eva-font-scale] td,
+html[data-eva-font-scale] th {
+  vertical-align: top;
+  word-break: break-word;
+}
+
+html[data-eva-font-scale] .whitespace-nowrap {
+  /* В плотных блоках лучше чуть увеличить межстрочный интервал при переносе через родителя */
+  line-height: 1.35;
+}
+
+/* Масштаб + крупный шрифт: горизонтальный скролл вместо наложения в широких таблицах/лентах */
+html[data-eva-font-scale] .overflow-x-auto,
+html[style*="zoom"] .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* -------------------------------------------------------------------------
    Тёмная тема: системные переопределения утилит (весь UI без правки каждой строки).
    Печать остаётся светлой.
    Tailwind v3 (hex/rgb) — совместимость с WebView2 109 на Windows 7/8.

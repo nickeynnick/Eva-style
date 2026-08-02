@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   GiftCertificate,
   DebtRecord,
@@ -18,11 +18,11 @@ import {
   Gift,
   Users,
   Plus,
-  Calendar,
   CheckCircle2,
   Ban,
   Trash2,
 } from "lucide-react";
+import MarkedDatePicker, { todayIso } from "./MarkedDatePicker";
 
 interface CertificatesAndDebtsProps {
   giftCertificates: GiftCertificate[];
@@ -71,6 +71,17 @@ export default function CertificatesAndDebts({
   const closedCerts = giftCertificates.filter((c) => !c.isActive || c.balance <= 0);
   const openDebts = debtRecords.filter((d) => !d.isClosed && d.remainingAmount > 0);
   const closedDebts = debtRecords.filter((d) => d.isClosed || d.remainingAmount <= 0);
+
+  const certMarkedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const c of giftCertificates) dates.add(c.soldDate);
+    for (const d of debtRecords) {
+      dates.add(d.createdDate);
+      dates.add(d.visitDate);
+      for (const p of d.payments) dates.add(p.date);
+    }
+    return dates;
+  }, [giftCertificates, debtRecords]);
 
   const handleIssueCertificate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,7 +289,10 @@ export default function CertificatesAndDebts({
 
   return (
     <div className="space-y-3" id="certificates-debts-view">
-      <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div
+        className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+        data-datepicker-elevate
+      >
         <div>
           <h2 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
             <Gift className="h-4 w-4 text-rose-500" />
@@ -288,17 +302,22 @@ export default function CertificatesAndDebts({
             Выпуск подарочных сертификатов, учёт остатков и погашение долгов клиентов
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-bold text-slate-500 uppercase">Дата:</span>
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1.5 h-3.5 w-3.5 text-rose-500" />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="pl-8 pr-2.5 py-1.5 border border-slate-200 rounded bg-slate-50 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-rose-200"
-            />
-          </div>
+          <MarkedDatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            markedDates={certMarkedDates}
+            id="certificates-date-picker"
+          />
+          <button
+            type="button"
+            onClick={() => setSelectedDate(todayIso())}
+            className="px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-600 rounded cursor-pointer transition-colors"
+            id="certificates-set-today-btn"
+          >
+            Сегодня
+          </button>
         </div>
       </div>
 
@@ -361,13 +380,22 @@ export default function CertificatesAndDebts({
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Дата продажи</label>
-                <input
-                  type="date"
-                  value={certSoldDate}
-                  onChange={(e) => setCertSoldDate(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50"
-                  required
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={certSoldDate}
+                    onChange={(e) => setCertSoldDate(e.target.value)}
+                    className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCertSoldDate(todayIso())}
+                    className="shrink-0 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-600 rounded"
+                  >
+                    Сегодня
+                  </button>
+                </div>
               </div>
             </div>
             <div>
@@ -456,13 +484,22 @@ export default function CertificatesAndDebts({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Дата оплаты</label>
-                  <input
-                    type="date"
-                    value={payDate}
-                    onChange={(e) => setPayDate(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50"
-                    required
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={payDate}
+                      onChange={(e) => setPayDate(e.target.value)}
+                      className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPayDate(todayIso())}
+                      className="shrink-0 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-600 rounded"
+                    >
+                      Сегодня
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>

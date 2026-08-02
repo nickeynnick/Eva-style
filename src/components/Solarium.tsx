@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { SolariumSession, SettingsRule, ReceivingPaymentMethod } from "../types";
 import { paymentMethodLabel } from "../utils/paymentUtils";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../utils/settingsUtils";
 import { Sun, Calendar, Plus, Trash2, ListFilter, RotateCcw, TrendingUp } from "lucide-react";
 import { showAppAlert } from "../utils/appDialog";
+import MarkedDatePicker, { todayIso } from "./MarkedDatePicker";
 
 interface SolariumProps {
   solariumSessions: SolariumSession[];
@@ -50,6 +51,12 @@ export default function Solarium({
 
   // Confirmation state for deleting sessions
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
+
+  const sessionMarkedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const s of solariumSessions) dates.add(s.date);
+    return dates;
+  }, [solariumSessions]);
 
   // Helper is date inside current month?
   const isDateInCurrentMonth = (dateStr: string) => {
@@ -187,7 +194,10 @@ export default function Solarium({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" id="solarium-details-grid">
         {/* Record session Card */}
         <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div
+            className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4"
+            data-datepicker-elevate
+          >
             <h3 className="text-md font-semibold text-slate-800 flex items-center gap-2">
               <Sun className="h-5 w-5 text-amber-500" />
               Зафиксировать сеанс солярия
@@ -196,13 +206,22 @@ export default function Solarium({
             <form onSubmit={handleAddSession} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Дата</label>
-                <input
-                  type="date"
-                  value={sessionDate}
-                  onChange={(e) => setSessionDate(e.target.value)}
-                  className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2 bg-slate-50/50 focus:outline-none"
-                  required
-                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <MarkedDatePicker
+                    value={sessionDate}
+                    onChange={setSessionDate}
+                    markedDates={sessionMarkedDates}
+                    id="solarium-session-date"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSessionDate(todayIso())}
+                    className="shrink-0 px-2.5 py-2 text-xs font-bold uppercase tracking-wider bg-amber-50 hover:bg-amber-100 border border-amber-100 text-amber-700 rounded-xl cursor-pointer transition-colors"
+                    id="solarium-set-today-btn"
+                  >
+                    Сегодня
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -350,15 +369,25 @@ export default function Solarium({
 
             {/* Interactive sub-filters based on mode */}
             {filterMode === "selected" && (
-              <div className="flex items-center gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <Calendar className="h-4 w-4 text-slate-400" />
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100"
+                data-datepicker-elevate
+              >
+                <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
                 <span className="text-slate-600 font-medium">Показать за дату:</span>
-                <input
-                  type="date"
+                <MarkedDatePicker
                   value={filterSingleDate}
-                  onChange={(e) => setFilterSingleDate(e.target.value)}
-                  className="border border-slate-200 rounded px-2.5 py-1 text-xs bg-white text-slate-700"
+                  onChange={setFilterSingleDate}
+                  markedDates={sessionMarkedDates}
+                  id="solarium-filter-date"
                 />
+                <button
+                  type="button"
+                  onClick={() => setFilterSingleDate(todayIso())}
+                  className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-50 hover:bg-amber-100 border border-amber-100 text-amber-700 rounded"
+                >
+                  Сегодня
+                </button>
               </div>
             )}
 

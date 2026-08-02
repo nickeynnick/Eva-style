@@ -124,6 +124,10 @@ export interface ExtraTransaction {
   amount: number;
   comment: string;
   category?: string; // e.g. "Интернет", "Свет", "Аренда", "Закупка товара"
+  /** Способ получения для доходов (type «плюс»). */
+  paymentMethod?: PaymentMethod;
+  /** Комиссия эквайринга при оплате картой (для доходов). */
+  acquiringCost?: number;
   isDeleted?: boolean;
 }
 
@@ -194,7 +198,7 @@ export interface MasterFinanceRecord {
 export interface MasterTransaction {
   id: string;
   masterId: string;
-  type: "выплата" | "аванс" | "вычет" | "вычет аренды" | "возврат материалов" | "прочее";
+  type: "выплата" | "аванс" | "вычет" | "вычет аренды" | "возврат материалов" | "начисление" | "прочее";
   amount: number;
   date: string; // YYYY-MM-DD
   comment: string;

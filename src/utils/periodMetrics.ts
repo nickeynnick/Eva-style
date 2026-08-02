@@ -65,6 +65,10 @@ export function computeMonthMetrics(
     )
     .reduce((s, t) => s + t.amount, 0);
 
+  const extraIncome = monthTxs
+    .filter((t) => t.type === "плюс")
+    .reduce((s, t) => s + t.amount, 0);
+
   let totalAcquiring = 0;
   const daysInMonth = new Date(
     Number(monthPrefix.slice(0, 4)),
@@ -72,19 +76,22 @@ export function computeMonthMetrics(
     0
   ).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${monthPrefix}${d.toString().padStart(2, "0")}`;
+    const isoDay = `${monthPrefix.slice(0, 7)}-${d.toString().padStart(2, "0")}`;
     totalAcquiring += computeDayAcquiring(
-      dateStr,
+      isoDay,
       visits,
       solariumSessions,
       giftCertificates,
       debtRecords,
-      settingsRules
+      settingsRules,
+      extraTransactions
     );
   }
 
   const netEarnings =
-    grossRevenueExcludingMaterials - (adminsWages + mastersWages + totalAcquiring + otherBillExpenses);
+    grossRevenueExcludingMaterials +
+    extraIncome -
+    (adminsWages + mastersWages + totalAcquiring + otherBillExpenses);
 
   return {
     monthPrefix,

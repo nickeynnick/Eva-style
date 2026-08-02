@@ -49,6 +49,8 @@ import {
   FileText,
   Printer,
   ZoomIn,
+  Type,
+  Gauge,
 } from "lucide-react";
 import { ResetAppMode } from "../utils/resetAppData";
 import { computeDayAcquiring, computePeriodAcquiring, computePeriodCashlessGross } from "../utils/dailyFinanceUtils";
@@ -69,6 +71,13 @@ import {
   formatUiZoom,
   useUiZoom,
 } from "../utils/uiZoom";
+import {
+  UI_FONT_SCALE_OPTIONS,
+  applyUiFontScale,
+  formatUiFontScale,
+  useUiFontScale,
+} from "../utils/uiFontScale";
+import { applyUiLiteMode, useUiLiteMode } from "../utils/uiLiteMode";
 import FinancePdfExportModal from "./FinancePdfExportModal";
 
 const LazyRevenueDayChart = lazy(() =>
@@ -206,6 +215,8 @@ export default function OwnerSection({
   const themeMode = useThemeMode();
   const chartColors = useMemo(() => getThemeChartColors(), [themeMode]);
   const uiZoom = useUiZoom();
+  const uiFontScale = useUiFontScale();
+  const liteMode = useUiLiteMode();
 
   useEffect(() => {
     const onOwnerNav = (event: Event) => {
@@ -324,11 +335,13 @@ export default function OwnerSection({
   };
 
   const onFinanceTab = activeSubTab === "finance";
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
   /** Тяжёлые агрегаты — только на вкладке «Сводный отчет». */
   const needFinanceData = onFinanceTab;
   /** Диаграммы и большие таблицы — только когда блок развёрнут (иначе не считаем и не держим в памяти). */
   const needRevenueChart = onFinanceTab && isFinanceBlockOpen("revenue-chart");
-  const needMasterRevenue = onFinanceTab; // нужна диаграмме и PDF-экспорту
+  const needMasterRevenue =
+    onFinanceTab && (isFinanceBlockOpen("master-revenue") || pdfExportOpen);
   const needDailyLedger = onFinanceTab && isFinanceBlockOpen("detailed-daily-ledger");
   const needYearlyLedger = onFinanceTab && isFinanceBlockOpen("detailed-yearly-ledger");
 
@@ -452,7 +465,6 @@ export default function OwnerSection({
   const [finMonth, setFinMonth] = useState<number>(new Date().getMonth());
   const [finYear, setFinYear] = useState<number>(new Date().getFullYear());
   const [finPeriodType, setFinPeriodType] = useState<"today" | "month" | "custom" | "day">("today");
-  const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   const [finSelectedDay, setFinSelectedDay] = useState<string>(() => {
     const d = new Date();
@@ -701,11 +713,17 @@ export default function OwnerSection({
       solariumSessions,
       giftCertificates,
       debtRecords,
-      settingsRules
+      settingsRules,
+      extraTransactions
     );
 
-    // Gross Revenue of Services & Minutes (Excluding Salon & Solarium Materials)
-    const grossRevenueExcludingMaterials = totalVisitsWorkRevenues + totalSolariumMinsRevenues;
+    const extraIncomeTotal = currentMonthExtraTxs
+      .filter((t) => t.type === "плюс")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Gross Revenue of Services & Minutes (Excluding Salon & Solarium Materials) + доп. доходы
+    const grossRevenueExcludingMaterials =
+      totalVisitsWorkRevenues + totalSolariumMinsRevenues + extraIncomeTotal;
 
     // Expenses of Services & Minutes (Excluding Material Purchases)
     const totalExpensesExcludingMaterials = adminsMonthlyWages + mastersPortionsWages + totalAcquiringCommissionPaid + otherBillExpenses;
@@ -722,7 +740,8 @@ export default function OwnerSection({
       solariumSessions,
       giftCertificates,
       debtRecords,
-      settingsRules
+      settingsRules,
+      extraTransactions
     );
     const cashlessAcquiringCommissions = totalAcquiringCommissionPaid;
     const cashlessNetRevenue = cashlessGrossRevenue - cashlessAcquiringCommissions;
@@ -1017,8 +1036,6 @@ export default function OwnerSection({
         0
       );
       
-      const dayGross = dayWorkRevenue + daySolGross; // Excludes Materials
-      
       // Personnel & Operational Expenses
       const dayAdminWages = dayShifts.reduce((sum, s) => sum + s.rate, 0);
       const dayMasterWages = dayVisits.reduce((sum, visit) => {
@@ -1040,7 +1057,8 @@ export default function OwnerSection({
         solariumSessions,
         giftCertificates,
         debtRecords,
-        settingsRules
+        settingsRules,
+        extraTransactions
       );
 
       const dayMaterialsPurchaseExpenses = dayOtherTxs
@@ -1050,8 +1068,13 @@ export default function OwnerSection({
       const dayOtherBillExpense = dayOtherTxs
         .filter(t => t.type === "минус" && !(t.category === "Закупка товара" || t.category === "Закупка материалов" || t.comment?.toLowerCase().includes("материал") || t.comment?.toLowerCase().includes("закупка")))
         .reduce((sum, t) => sum + t.amount, 0);
+
+      const dayExtraIncome = dayOtherTxs
+        .filter((t) => t.type === "плюс")
+        .reduce((sum, t) => sum + t.amount, 0);
         
       const dayExpenses = dayAdminWages + dayMasterWages + dayAcquiring + dayOtherBillExpense; // Excludes Material Purchases
+      const dayGross = dayWorkRevenue + daySolGross + dayExtraIncome; // Excludes Materials
       const dayNet = dayGross - dayExpenses; // Excludes Materials
       
       // Get weekday:
@@ -1137,7 +1160,8 @@ export default function OwnerSection({
             solariumSessions,
             giftCertificates,
             debtRecords,
-            settingsRules
+            settingsRules,
+            extraTransactions
           );
         }
         return Math.round(sum * 100) / 100;
@@ -2453,7 +2477,7 @@ export default function OwnerSection({
               .reduce((sum, t) => sum + t.amount, 0);
 
             const totalExtras = periodTxs
-              .filter(t => t.type === "возврат материалов" || t.type === "прочее")
+              .filter(t => t.type === "возврат материалов" || t.type === "прочее" || t.type === "начисление")
               .reduce((sum, t) => sum + t.amount, 0);
 
             // Total revenue brought by employee services to salon:
@@ -2672,6 +2696,77 @@ export default function OwnerSection({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-ui-font-scale-settings">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
+                <Type className="h-5 w-5 text-violet-600" />
+                Размер шрифта
+              </h3>
+              <span className="text-[11px] font-mono font-bold text-slate-500">{formatUiFontScale(uiFontScale)}</span>
+            </div>
+            <p className="text-xs text-slate-500 font-sans leading-relaxed">
+              Крупнее обычный и мелкий текст (подписи, пояснения, подсказки). Вёрстка и кнопки не раздуваются — в отличие от масштаба интерфейса. Можно сочетать с масштабом; при очень крупных значениях шапка и вкладки переносятся/прокручиваются, чтобы ничего не налезало.
+            </p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Размер шрифта">
+              {UI_FONT_SCALE_OPTIONS.map((opt) => {
+                const active = uiFontScale === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => applyUiFontScale(opt.value)}
+                    className={`min-w-[4.5rem] px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      active
+                        ? "bg-violet-600 border-violet-600 text-white shadow-sm"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4" id="owner-ui-lite-mode-settings">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
+                <Gauge className="h-5 w-5 text-amber-600" />
+                Лёгкий режим
+              </h3>
+              <span className="text-[11px] font-mono font-bold text-slate-500">
+                {liteMode ? "вкл" : "выкл"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-sans leading-relaxed">
+              Для слабых ПК (мало памяти, старый процессор): без лишних анимаций, вкладки выгружаются из памяти при переключении, короче заставка. Рекомендуется на Windows 8.1 и машинах с 2 ГБ ОЗУ.
+            </p>
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="space-y-0.5 pr-2">
+                <span className="text-xs font-bold text-slate-700 block text-left">Включить лёгкий режим</span>
+                <span className="text-[11px] text-slate-400 block text-left">
+                  Сохраняется на этом компьютере и действует сразу
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => applyUiLiteMode(!liteMode)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  liteMode ? "bg-amber-500" : "bg-slate-300"
+                }`}
+                aria-pressed={liteMode}
+                id="toggle-ui-lite-mode"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    liteMode ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
           </div>
 

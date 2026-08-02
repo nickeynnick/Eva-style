@@ -3,7 +3,6 @@ import { installFocusTracker } from "./utils/restoreAppFocus";
 import {
   Download,
   Upload,
-  Bug,
   Bot,
 } from "lucide-react";
 import { getResetSuccessMessage, ResetAppMode } from "./utils/resetAppData";
@@ -24,10 +23,10 @@ import WhatsNewModal from "./components/WhatsNewModal";
 import UpdateModal from "./components/UpdateModal";
 import ThemeToggle from "./components/ThemeToggle";
 import HeaderClock from "./components/HeaderClock";
-import AiAssistantPanel from "./components/AiAssistantPanel";
 import { getChangelogForVersion } from "./data/changelog";
 import { APP_VERSION } from "./data/appVersion";
 import { publicAsset } from "./utils/publicAsset";
+import { useUiLiteMode } from "./utils/uiLiteMode";
 import {
   useAppStore,
   useStorePreferences,
@@ -47,6 +46,7 @@ const OwnerSection = lazy(() => import("./components/OwnerSection"));
 const OwnerPasswordPrompt = lazy(() => import("./components/OwnerPasswordPrompt"));
 const InteractiveHelp = lazy(() => import("./components/InteractiveHelp"));
 const DevModePanel = lazy(() => import("./components/DevModePanel"));
+const AiAssistantPanel = lazy(() => import("./components/AiAssistantPanel"));
 
 function TabFallback() {
   return (
@@ -61,6 +61,7 @@ export default function App() {
     useAppStore();
   const { preferences, setPreference } = useStorePreferences();
   const { meta, setMeta } = useStoreMeta();
+  const liteMode = useUiLiteMode();
 
   const [activeTab, setActiveTab] = useState("accounting");
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set(["accounting"]));
@@ -122,8 +123,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (liteMode) {
+      setMountedTabs(new Set([activeTab]));
+      return;
+    }
     setMountedTabs((prev) => new Set(prev).add(activeTab));
-  }, [activeTab]);
+  }, [activeTab, liteMode]);
 
   useEffect(() => {
     if (meta.seenAppVersion !== APP_VERSION) {
@@ -314,90 +319,98 @@ export default function App() {
           <DevModePanel open={showDevPanel} onClose={() => setShowDevPanel(false)} />
         </Suspense>
       )}
-      <AiAssistantPanel
-        open={aiAssistantOpen}
-        onClose={() => setAiAssistantOpen(false)}
-        selectedJournalDate={selectedDateUi}
-        onNavigate={({ tab, journalDate, ownerSection }) => {
-          if (journalDate) setSelectedDateUi(journalDate);
-          if (tab) {
-            setActiveTab(tab);
-            setMountedTabs((prev) => new Set(prev).add(tab));
-          }
-          if (ownerSection && typeof window !== "undefined") {
-            window.setTimeout(() => {
-              window.dispatchEvent(
-                new CustomEvent("eva-style-owner-nav", { detail: { subTab: ownerSection } })
-              );
-            }, 50);
-          }
-        }}
-      />
+      {aiAssistantOpen && (
+        <Suspense fallback={null}>
+          <AiAssistantPanel
+            open={aiAssistantOpen}
+            onClose={() => setAiAssistantOpen(false)}
+            selectedJournalDate={selectedDateUi}
+            onNavigate={({ tab, journalDate, ownerSection }) => {
+              if (journalDate) setSelectedDateUi(journalDate);
+              if (tab) {
+                setActiveTab(tab);
+                if (!liteMode) {
+                  setMountedTabs((prev) => new Set(prev).add(tab));
+                }
+              }
+              if (ownerSection && typeof window !== "undefined") {
+                window.setTimeout(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("eva-style-owner-nav", { detail: { subTab: ownerSection } })
+                  );
+                }, 50);
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm" id="app-header-bar">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-12 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex items-center gap-2 min-w-0 shrink">
             <img
               src={publicAsset("icon-ui.png")}
               alt="Ева-стиль"
-              className="h-8 w-8 rounded object-cover border border-rose-100 shadow-sm"
+              className="h-8 w-8 rounded object-cover border border-rose-100 shadow-sm shrink-0"
               width={32}
               height={32}
             />
-            <div>
-              <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-none">Ева-стиль</h1>
-              <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase mt-0.5">Учетный пульт</p>
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-snug">Ева-стиль</h1>
+              <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase mt-0.5 leading-snug">
+                Учетный пульт
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 min-w-0">
             <HeaderClock />
             <button
               type="button"
               onClick={devModeEnabled ? () => setShowDevPanel(true) : onDevBadgeClick}
-              className={`flex items-center gap-1.5 border text-[10px] py-1 px-2.5 rounded font-mono font-bold uppercase tracking-wider transition-colors ${
+              className={`inline-flex items-center justify-center border p-1.5 rounded transition-colors shrink-0 ${
                 devModeEnabled
                   ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
                   : "bg-slate-50 border-slate-200 text-slate-600"
               }`}
               id="db-status-indicator"
-              title={devModeEnabled ? "Режим разработчика (Ctrl+Shift+D)" : undefined}
+              title={
+                devModeEnabled
+                  ? `Режим разработчика (Ctrl+Shift+D) · Store v${state.schemaVersion}`
+                  : `Хранилище Store v${state.schemaVersion}`
+              }
+              aria-label={
+                devModeEnabled
+                  ? `Режим разработчика, Store v${state.schemaVersion}`
+                  : `Store v${state.schemaVersion}`
+              }
             >
               <span className="relative flex h-1.5 w-1.5">
-                <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    devModeEnabled ? "bg-emerald-400" : "bg-rose-400"
-                  }`}
-                />
+                {!liteMode && (
+                  <span
+                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      devModeEnabled ? "bg-emerald-400" : "bg-rose-400"
+                    }`}
+                  />
+                )}
                 <span
                   className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
                     devModeEnabled ? "bg-emerald-500" : "bg-rose-500"
                   }`}
                 />
               </span>
-              {devModeEnabled ? (
-                <>
-                  <Bug className="h-3 w-3" />
-                  Dev · Store v{state.schemaVersion}
-                </>
-              ) : (
-                <>Store v{state.schemaVersion}</>
-              )}
             </button>
             <ThemeToggle />
             <button
               type="button"
               onClick={() => setAiAssistantOpen(true)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-700 border border-violet-200 bg-violet-50 rounded hover:bg-violet-100"
+              className="inline-flex items-center justify-center p-1.5 text-violet-700 border border-violet-200 bg-violet-50 rounded hover:bg-violet-100 shrink-0"
               title="AI-помощник DeepSeek (бета)"
+              aria-label="AI-помощник DeepSeek (бета)"
               id="ai-assistant-header-btn"
             >
               <Bot className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">AI</span>
-              <span className="text-[8px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1 py-0.5 rounded">
-                бета
-              </span>
             </button>
-            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+            <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-200 pl-2 sm:pl-3">
               <GlobalSearch
                 visits={state.visits}
                 giftCertificates={state.giftCertificates}
@@ -409,18 +422,18 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleExportBackup}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50"
+                className="inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 shrink-0"
                 title="Сохранить резервную копию данных в файл"
               >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Сохранить копию</span>
+                <Download className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden xl:inline leading-snug">Сохранить копию</span>
               </button>
               <label
-                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200 rounded hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 cursor-pointer shrink-0"
                 title="Восстановить данные из файла резервной копии"
               >
-                <Upload className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Восстановить</span>
+                <Upload className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden xl:inline leading-snug">Восстановить</span>
                 <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
               </label>
             </div>
@@ -428,7 +441,7 @@ export default function App() {
         </div>
         <div className="bg-slate-50 border-t border-slate-200" id="tabs-navigation-panel">
           <div className="max-w-7xl mx-auto px-3">
-            <nav className="flex space-x-1 py-1 overflow-x-auto scrollbar-none">
+            <nav className="flex flex-nowrap gap-1 py-1 overflow-x-auto scrollbar-none">
               {[
                 { id: "accounting", name: "Учет за день" },
                 { id: "certificates", name: "Сертификаты" },
@@ -442,7 +455,7 @@ export default function App() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`whitespace-nowrap rounded py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  className={`whitespace-nowrap shrink-0 rounded py-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider leading-snug transition-all ${
                     activeTab === tab.id ? "bg-rose-50 text-rose-700 border border-rose-200 shadow-xs" : "text-slate-500 border border-transparent hover:text-slate-800 hover:bg-slate-200/50"
                   }`}
                   id={`tab-btn-${tab.id}`}
@@ -646,7 +659,10 @@ export default function App() {
       </main>
 
       <footer className="bg-slate-200 border-t border-slate-300 py-1.5 px-3 flex flex-wrap items-center justify-between text-[10px] font-mono font-medium text-slate-500 shrink-0 uppercase tracking-wider" id="app-footer">
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />Система: <span className="text-slate-800 font-bold">Online</span></span>
+        <span className="flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full bg-emerald-500 ${liteMode ? "" : "animate-pulse"}`} />
+          Система: <span className="text-slate-800 font-bold">Online</span>
+        </span>
         <div className="text-[10px] text-slate-500 font-bold">© 2026 Ева-стиль v{APP_VERSION} · Windows</div>
       </footer>
     </div>

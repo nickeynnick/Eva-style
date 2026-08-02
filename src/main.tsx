@@ -4,6 +4,8 @@ import { AppStoreProvider } from "./store";
 import { installDisableNumberInputWheel } from "./utils/disableNumberInputWheel";
 import { applyTheme, getStoredTheme } from "./utils/theme";
 import { applyUiZoom, getStoredUiZoom } from "./utils/uiZoom";
+import { applyUiFontScale, getStoredUiFontScale } from "./utils/uiFontScale";
+import { applyUiLiteMode, getStoredUiLiteMode } from "./utils/uiLiteMode";
 import { installCrashLogCapture } from "./utils/crashLog";
 import { installTauriDesktopBridge } from "./desktop/tauriBridge";
 import App from "./App.tsx";
@@ -12,6 +14,8 @@ import "./index.css";
 async function bootstrap() {
   applyTheme(getStoredTheme());
   applyUiZoom(getStoredUiZoom());
+  applyUiFontScale(getStoredUiFontScale());
+  applyUiLiteMode(getStoredUiLiteMode());
   installDisableNumberInputWheel();
 
   try {

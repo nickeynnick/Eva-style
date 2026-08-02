@@ -4,18 +4,37 @@ import {
   GiftCertificate,
   DebtRecord,
   SettingsRule,
+  ExtraTransaction,
+  DailyCashState,
+  MasterTransaction,
 } from "../types";
-import { calculateAcquiring } from "./paymentUtils";
-import { getActiveSettingsForDate, getSolariumSessionAcquiring, getSolariumSessionTotal } from "./settingsUtils";
+import { calculateAcquiring, getVisitCashAmount } from "./paymentUtils";
+import {
+  getActiveSettingsForDate,
+  getSolariumSessionAcquiring,
+  getSolariumSessionBase,
+  getSolariumSessionTotal,
+} from "./settingsUtils";
 
-/** Комиссия эквайринга за день: визиты, солярий, продажа сертификатов и погашение долгов картой. */
+export function getExtraIncomeAcquiring(
+  tx: Pick<ExtraTransaction, "type" | "amount" | "paymentMethod" | "acquiringCost" | "date">,
+  settingsRules: SettingsRule[]
+): number {
+  if (tx.type !== "плюс" || tx.paymentMethod !== "дебетовая карта") return 0;
+  if (tx.acquiringCost !== undefined) return tx.acquiringCost;
+  const settings = getActiveSettingsForDate(settingsRules, tx.date);
+  return calculateAcquiring(tx.amount, "дебетовая карта", settings.acquiringCommission);
+}
+
+/** Комиссия эквайринга за день: визиты, солярий, сертификаты, долги и доп. доходы картой. */
 export function computeDayAcquiring(
   dateStr: string,
   visits: Visit[],
   solariumSessions: SolariumSession[],
   giftCertificates: GiftCertificate[],
   debtRecords: DebtRecord[],
-  settingsRules: SettingsRule[]
+  settingsRules: SettingsRule[],
+  extraTransactions: ExtraTransaction[] = []
 ): number {
   const visitsAcq = visits
     .filter((v) => v.date === dateStr && !v.isDeleted && v.paymentMethod === "дебетовая карта")
@@ -37,7 +56,11 @@ export function computeDayAcquiring(
     .filter((p) => p.paymentMethod === "дебетовая карта")
     .reduce((sum, p) => sum + getDebtPaymentAcquiringCost(p, settingsRules), 0);
 
-  return Math.round((visitsAcq + solariumAcq + certAcq + debtAcq) * 100) / 100;
+  const extraAcq = extraTransactions
+    .filter((t) => t.date === dateStr && !t.isDeleted && t.type === "плюс")
+    .reduce((sum, t) => sum + getExtraIncomeAcquiring(t, settingsRules), 0);
+
+  return Math.round((visitsAcq + solariumAcq + certAcq + debtAcq + extraAcq) * 100) / 100;
 }
 
 export function getDebtPaymentAcquiringCost(
@@ -58,14 +81,15 @@ export function getDebtPaymentCardTotal(
   return payment.amount + getDebtPaymentAcquiringCost(payment, settingsRules);
 }
 
-/** Сумма эквайринга за список дат (визиты, солярий, продажа сертификатов, погашение долгов). */
+/** Сумма эквайринга за список дат (визиты, солярий, сертификаты, долги, доп. доходы). */
 export function computePeriodAcquiring(
   dateStrings: string[],
   visits: Visit[],
   solariumSessions: SolariumSession[],
   giftCertificates: GiftCertificate[],
   debtRecords: DebtRecord[],
-  settingsRules: SettingsRule[]
+  settingsRules: SettingsRule[],
+  extraTransactions: ExtraTransaction[] = []
 ): number {
   const total = dateStrings.reduce(
     (sum, dateStr) =>
@@ -76,21 +100,23 @@ export function computePeriodAcquiring(
         solariumSessions,
         giftCertificates,
         debtRecords,
-        settingsRules
+        settingsRules,
+        extraTransactions
       ),
     0
   );
   return Math.round(total * 100) / 100;
 }
 
-/** Брутто-поступления на карту/р/с за день (включая продажу сертификатов и погашение долгов). */
+/** Брутто-поступления на карту/р/с за день (включая продажу сертификатов, погашение долгов и доп. доходы). */
 export function computeDayCashlessGross(
   dateStr: string,
   visits: Visit[],
   solariumSessions: SolariumSession[],
   giftCertificates: GiftCertificate[],
   debtRecords: DebtRecord[],
-  settingsRules: SettingsRule[]
+  settingsRules: SettingsRule[],
+  extraTransactions: ExtraTransaction[] = []
 ): number {
   const visitsCard = visits
     .filter((v) => v.date === dateStr && !v.isDeleted && v.paymentMethod === "дебетовая карта")
@@ -113,7 +139,17 @@ export function computeDayCashlessGross(
     .filter((p) => p.paymentMethod === "дебетовая карта")
     .reduce((sum, p) => sum + getDebtPaymentCardTotal(p, settingsRules), 0);
 
-  return Math.round((visitsCard + solariumCard + certCard + debtCard) * 100) / 100;
+  const extraCard = extraTransactions
+    .filter(
+      (t) =>
+        t.date === dateStr &&
+        !t.isDeleted &&
+        t.type === "плюс" &&
+        t.paymentMethod === "дебетовая карта"
+    )
+    .reduce((sum, t) => sum + t.amount + getExtraIncomeAcquiring(t, settingsRules), 0);
+
+  return Math.round((visitsCard + solariumCard + certCard + debtCard + extraCard) * 100) / 100;
 }
 
 export function computePeriodCashlessGross(
@@ -122,7 +158,8 @@ export function computePeriodCashlessGross(
   solariumSessions: SolariumSession[],
   giftCertificates: GiftCertificate[],
   debtRecords: DebtRecord[],
-  settingsRules: SettingsRule[]
+  settingsRules: SettingsRule[],
+  extraTransactions: ExtraTransaction[] = []
 ): number {
   const total = dateStrings.reduce(
     (sum, dateStr) =>
@@ -133,9 +170,73 @@ export function computePeriodCashlessGross(
         solariumSessions,
         giftCertificates,
         debtRecords,
-        settingsRules
+        settingsRules,
+        extraTransactions
       ),
     0
   );
   return Math.round(total * 100) / 100;
+}
+
+/** Предыдущий календарный день (локально), YYYY-MM-DD. */
+export function previousIsoDate(iso: string): string {
+  const parts = iso.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return iso;
+  const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+  dt.setDate(dt.getDate() - 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Прогноз кассы на конец дня (как в «Учёте за день»):
+ * старт + наличные притоки − операционные расходы − выплаты/авансы мастерам.
+ */
+export function computeProjectedEndCash(
+  dateStr: string,
+  dailyCash: DailyCashState[],
+  visits: Visit[],
+  solariumSessions: SolariumSession[],
+  extraTransactions: ExtraTransaction[],
+  masterTransactions: MasterTransaction[],
+  giftCertificates: GiftCertificate[],
+  debtRecords: DebtRecord[],
+  settingsRules: SettingsRule[]
+): number {
+  const startCash = dailyCash.find((c) => c.date === dateStr)?.startCash ?? 0;
+
+  const dayVisits = visits.filter((v) => v.date === dateStr && !v.isDeleted);
+  const visitsCash = dayVisits.reduce((sum, v) => sum + getVisitCashAmount(v), 0);
+
+  const daySolarium = solariumSessions.filter((s) => s.date === dateStr);
+  const solariumCash = daySolarium
+    .filter((s) => s.paymentMethod === "наличные")
+    .reduce((sum, s) => sum + getSolariumSessionBase(s, settingsRules), 0);
+
+  const dayExtras = extraTransactions.filter((t) => t.date === dateStr && !t.isDeleted);
+  const expenses = dayExtras
+    .filter((t) => t.type === "минус")
+    .reduce((sum, t) => sum + t.amount, 0);
+  const additionsCash = dayExtras
+    .filter(
+      (t) =>
+        t.type === "плюс" &&
+        (!t.paymentMethod || t.paymentMethod === "наличные")
+    )
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const certSalesCash = giftCertificates
+    .filter((c) => c.soldDate === dateStr && c.salePaymentMethod === "наличные")
+    .reduce((sum, c) => sum + c.nominal, 0);
+
+  const debtPaymentsCash = debtRecords
+    .flatMap((d) => d.payments.filter((p) => p.date === dateStr))
+    .filter((p) => p.paymentMethod === "наличные")
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const masterPayouts = masterTransactions
+    .filter((t) => t.date === dateStr && (t.type === "выплата" || t.type === "аванс"))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const cashInflow = visitsCash + solariumCash + additionsCash + certSalesCash + debtPaymentsCash;
+  return Math.max(0, startCash + cashInflow - expenses - masterPayouts);
 }

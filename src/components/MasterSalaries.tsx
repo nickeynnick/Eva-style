@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { showAppAlert } from "../utils/appDialog";
 import { 
   Employee, 
@@ -20,6 +20,7 @@ import {
   TrendingDown, 
   Calculator 
 } from "lucide-react";
+import { todayIso } from "./MarkedDatePicker";
 
 interface MasterSalariesProps {
   employees: Employee[];
@@ -153,71 +154,78 @@ export default function MasterSalaries({
 
   const activeMasters = employees;
 
-  // Compute stats for each master
-  const masterFinancialRecords = activeMasters.map(master => {
-    // 1. Filter visits of this master (exclude deleted ones and filter by target period)
-    const masterVisits = visits.filter(v => v.masterId === master.id && !v.isDeleted && isDateInLedgerPeriod(v.date));
-    
-    // 2. Count shifts and compute base earned amount
-    let shiftsCount = 0;
-    let shareAmount = 0;
+  const masterFinancialRecords = useMemo(() => {
+    return activeMasters.map((master) => {
+      const masterVisits = visits.filter(
+        (v) => v.masterId === master.id && !v.isDeleted && isDateInLedgerPeriod(v.date)
+      );
 
-    if (master.position === Position.Administrator) {
-      // Pull and sum administrative shifts of this employee
-      const adminShiftRecords = adminShifts ? adminShifts.filter(s => s.adminId === master.id && isDateInLedgerPeriod(s.date)) : [];
-      shiftsCount = adminShiftRecords.length;
-      shareAmount = adminShiftRecords.reduce((sum, s) => sum + s.rate, 0);
-    } else {
-      // Standard beautician shift dates and commission share
-      const distinctDates = Array.from(new Set(masterVisits.map(v => v.date)));
-      shiftsCount = distinctDates.length;
-      shareAmount = masterVisits.reduce((sum, v) => sum + calculateMasterShareForVisit(master, v), 0);
-    }
+      let shiftsCount = 0;
+      let shareAmount = 0;
 
-    // 4. Master materials reimbursement
-    const materialsReimbursement = masterVisits.reduce((sum, v) => {
-      if (v.masterMaterialsCost !== undefined) {
-        return sum + v.masterMaterialsCost;
+      if (master.position === Position.Administrator) {
+        const adminShiftRecords = adminShifts
+          ? adminShifts.filter((s) => s.adminId === master.id && isDateInLedgerPeriod(s.date))
+          : [];
+        shiftsCount = adminShiftRecords.length;
+        shareAmount = adminShiftRecords.reduce((sum, s) => sum + s.rate, 0);
+      } else {
+        const distinctDates = Array.from(new Set(masterVisits.map((v) => v.date)));
+        shiftsCount = distinctDates.length;
+        shareAmount = masterVisits.reduce((sum, v) => sum + calculateMasterShareForVisit(master, v), 0);
       }
-      return sum + ((v as any).isSalonMaterials === false ? v.materialsCost : 0);
-    }, 0);
 
-    // 5. Rent deduction (if they pay rent, it deducts per shift)
-    const rentDeduction = master.dailyRent * shiftsCount;
+      const materialsReimbursement = masterVisits.reduce((sum, v) => {
+        if (v.masterMaterialsCost !== undefined) {
+          return sum + v.masterMaterialsCost;
+        }
+        return sum + ((v as { isSalonMaterials?: boolean }).isSalonMaterials === false ? v.materialsCost : 0);
+      }, 0);
 
-    // 6. Manual transactions calculation (filtered by period too)
-    const masterTxs = masterTransactions.filter(t => t.masterId === master.id && isDateInLedgerPeriod(t.date));
-    
-    // Deductions/Fines (and manual rent if typed as rent)
-    const extraDeductions = masterTxs
-      .filter(t => t.type === "вычет" || t.type === "вычет аренды")
-      .reduce((sum, t) => sum + t.amount, 0);
+      const rentDeduction = master.dailyRent * shiftsCount;
 
-    // Paid out
-    const paidOutAmount = masterTxs
-      .filter(t => t.type === "выплата" || t.type === "аванс")
-      .reduce((sum, t) => sum + t.amount, 0);
+      const masterTxs = masterTransactions.filter(
+        (t) => t.masterId === master.id && isDateInLedgerPeriod(t.date)
+      );
 
-    // Master materials reimbursement paid out manually (if typed so)
-    const extraAdditions = masterTxs
-      .filter(t => t.type === "возврат материалов" || t.type === "прочее")
-      .reduce((sum, t) => sum + t.amount, 0);
+      const extraDeductions = masterTxs
+        .filter((t) => t.type === "вычет" || t.type === "вычет аренды")
+        .reduce((sum, t) => sum + t.amount, 0);
 
-    // Balance to issue
-    // Balance = (Share + MaterialsReimbursement + any specific material return txs) - (Rent + Fines + PaidOut)
-    const balance = (shareAmount + materialsReimbursement + extraAdditions) - (rentDeduction + extraDeductions + paidOutAmount);
+      const paidOutAmount = masterTxs
+        .filter((t) => t.type === "выплата" || t.type === "аванс")
+        .reduce((sum, t) => sum + t.amount, 0);
 
-    return {
-      master,
-      shiftsCount,
-      shareAmount,
-      materialsReimbursement,
-      rentDeduction,
-      extraDeductions,
-      paidOutAmount,
-      balance
-    };
-  });
+      const extraAdditions = masterTxs
+        .filter((t) => t.type === "возврат материалов" || t.type === "прочее" || t.type === "начисление")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const balance =
+        shareAmount + materialsReimbursement + extraAdditions - (rentDeduction + extraDeductions + paidOutAmount);
+
+      return {
+        master,
+        shiftsCount,
+        shareAmount,
+        materialsReimbursement,
+        rentDeduction,
+        extraDeductions,
+        paidOutAmount,
+        balance,
+      };
+    });
+  }, [
+    activeMasters,
+    visits,
+    masterTransactions,
+    adminShifts,
+    ledgerPeriodType,
+    ledgerSelectedDay,
+    ledgerSelectedMonth,
+    ledgerSelectedYear,
+    ledgerStartDate,
+    ledgerEndDate,
+  ]);
 
   // Handle adding master transaction
   const handleAddTransaction = (e: React.FormEvent) => {
@@ -358,6 +366,13 @@ export default function MasterSalaries({
                   onChange={(e) => setLedgerSelectedDay(e.target.value)}
                   className="border border-slate-200 rounded-lg px-2 py-1 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
                 />
+                <button
+                  type="button"
+                  onClick={() => setLedgerSelectedDay(todayIso())}
+                  className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 text-emerald-700 rounded"
+                >
+                  Сегодня
+                </button>
               </div>
             )}
             
@@ -477,7 +492,7 @@ export default function MasterSalaries({
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <h3 className="text-md font-semibold text-slate-800 flex items-center gap-2">
               <RussianRuble className="h-5 w-5 text-emerald-600" />
-              Внести выплату или вычет мастеру
+              Внести выплату, начисление или вычет
             </h3>
 
             {allowPayouts ? (
@@ -501,14 +516,15 @@ export default function MasterSalaries({
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Тип операции</label>
                   <select
                     value={transactionType}
-                    onChange={(e) => setTransactionType(e.target.value as any)}
+                    onChange={(e) => setTransactionType(e.target.value as MasterTransaction["type"])}
                     className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 bg-slate-50/50 focus:outline-none"
                   >
                     <option value="выплата">Выплата (аванс / получка)</option>
+                    <option value="начисление">Начисление (премия / доплата)</option>
                     <option value="вычет">Вычет</option>
                     <option value="вычет аренды">Вычет за аренду</option>
                     <option value="возврат материалов">Возврат за материалы</option>
-                    <option value="прочее">Другие начисления/списания</option>
+                    <option value="прочее">Прочее</option>
                   </select>
                 </div>
 
@@ -527,20 +543,29 @@ export default function MasterSalaries({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Дата операции</label>
-                    <input
-                      type="date"
-                      value={txDate}
-                      onChange={(e) => setTxDate(e.target.value)}
-                      className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2 bg-slate-50/50 focus:outline-none"
-                      required
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="date"
+                        value={txDate}
+                        onChange={(e) => setTxDate(e.target.value)}
+                        className="flex-1 min-w-0 text-sm border border-slate-200 rounded-xl px-2 py-2 bg-slate-50/50 focus:outline-none"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTxDate(todayIso())}
+                        className="shrink-0 px-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 text-emerald-700 rounded-xl"
+                      >
+                        Сегодня
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Комментарий / Причина</label>
                   <textarea
-                    placeholder="Выдача аванса, вычет (необязательно)..."
+                    placeholder="Выдача аванса, начисление, вычет (необязательно)..."
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2 bg-slate-50/50 focus:outline-none h-20 resize-none"
@@ -643,6 +668,13 @@ export default function MasterSalaries({
                     onChange={(e) => setFilterDay(e.target.value)}
                     className="border border-slate-200 rounded px-2 py-1 bg-white"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setFilterDay(todayIso())}
+                    className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 text-emerald-700 rounded"
+                  >
+                    Сегодня
+                  </button>
                 </>
               )}
 
@@ -695,8 +727,10 @@ export default function MasterSalaries({
                           <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
                             tx.type === "выплата" || tx.type === "аванс" 
                               ? "bg-blue-50 text-blue-700"
-                              : tx.type === "вычет"
+                              : tx.type === "вычет" || tx.type === "вычет аренды"
                               ? "bg-red-50 text-red-700"
+                              : tx.type === "начисление"
+                              ? "bg-emerald-50 text-emerald-700"
                               : "bg-amber-50 text-amber-700"
                           }`}>
                             {tx.type}

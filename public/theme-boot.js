@@ -17,3 +17,11 @@ try {
 } catch (e) {
   /* ignore */
 }
+
+try {
+  if (localStorage.getItem("eva_style_lite_mode") === "1") {
+    document.documentElement.setAttribute("data-eva-lite", "1");
+  }
+} catch (e) {
+  /* ignore */
+}

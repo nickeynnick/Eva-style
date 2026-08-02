@@ -32,6 +32,11 @@ export default function AdminSalaries({
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthPrefix = `${currentYear}-${(currentMonth + 1).toString().padStart(2, "0")}`;
+  const today = new Date();
+  const todayDayNum =
+    today.getFullYear() === currentYear && today.getMonth() === currentMonth
+      ? today.getDate()
+      : null;
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
@@ -223,16 +228,31 @@ export default function AdminSalaries({
                     const dNum = idx + 1;
                     const wName = getWeekdayName(dNum);
                     const isWeekend = wName === "Сб" || wName === "Вс";
+                    const isToday = todayDayNum === dNum;
                     return (
                       <th
                         key={idx}
                         className={`py-2 text-center border-r border-slate-100 min-w-[52px] font-sans ${
-                          isWeekend ? "bg-amber-50/50 text-amber-700 font-semibold" : ""
+                          isToday
+                            ? "bg-emerald-100 text-emerald-800 ring-inset ring-1 ring-emerald-300"
+                            : isWeekend
+                              ? "bg-amber-50/50 text-amber-700 font-semibold"
+                              : ""
                         }`}
-                        title={`${dNum} ${monthsRussian[currentMonth]} (${wName})`}
+                        title={
+                          isToday
+                            ? `${dNum} ${monthsRussian[currentMonth]} (${wName}) — сегодня`
+                            : `${dNum} ${monthsRussian[currentMonth]} (${wName})`
+                        }
                       >
-                        <div className="text-[10px]">{dNum}</div>
-                        <div className="text-[9px] font-medium text-slate-400">{wName}</div>
+                        <div className={`text-[10px] ${isToday ? "font-extrabold" : ""}`}>{dNum}</div>
+                        <div
+                          className={`text-[9px] font-medium ${
+                            isToday ? "text-emerald-600" : "text-slate-400"
+                          }`}
+                        >
+                          {wName}
+                        </div>
                       </th>
                     );
                   })}
@@ -254,11 +274,14 @@ export default function AdminSalaries({
                       const cellKey = `${admin.id}|${dateStr}`;
                       const isEditing = editingCell === cellKey;
                       const wName = getWeekdayName(dNum);
+                      const isToday = todayDayNum === dNum;
 
                       return (
                         <td
                           key={idx}
                           className={`py-1 px-0.5 text-center border-r border-slate-100 select-none transition-colors ${
+                            isToday ? "bg-emerald-50/70" : ""
+                          } ${
                             allowAdminShiftEdits ? "cursor-pointer hover:bg-slate-100/50" : "cursor-default"
                           }`}
                           onClick={() => {

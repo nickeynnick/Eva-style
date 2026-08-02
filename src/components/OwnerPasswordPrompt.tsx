@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Lock, Unlock, KeyRound, Eye, EyeOff, ShieldAlert, CheckCircle2 } from "lucide-react";
-import { motion } from "motion/react";
 import {
   hashPassword,
   needsPasswordRehash,
@@ -72,12 +71,7 @@ export default function OwnerPasswordPrompt({
 
   return (
     <div className="min-h-[400px] flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-6 sm:p-8 space-y-6"
-      >
+      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-6 sm:p-8 space-y-6">
         {!isResetMode ? (
           <form onSubmit={(e) => void handleUnlockSubmit(e)} className="space-y-6">
             <div className="flex flex-col items-center text-center space-y-2">
@@ -122,14 +116,10 @@ export default function OwnerPasswordPrompt({
                   </button>
                 </div>
                 {error && (
-                  <motion.p
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="text-rose-500 text-xs font-bold font-sans mt-1 flex items-center gap-1"
-                  >
+                  <p className="text-rose-500 text-xs font-bold font-sans mt-1 flex items-center gap-1">
                     <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
                     {error}
-                  </motion.p>
+                  </p>
                 )}
               </div>
 
@@ -160,7 +150,7 @@ export default function OwnerPasswordPrompt({
           <form onSubmit={handleResetSubmit} className="space-y-6">
             <div className="flex flex-col items-center text-center space-y-2">
               <div className="p-3 bg-blue-50 text-blue-500 rounded-2xl border border-blue-100">
-                <ShieldAlert className="h-6 w-6 animate-pulse" />
+                <ShieldAlert className="h-6 w-6" />
               </div>
               <h2 className="text-lg font-bold text-slate-800 tracking-tight">Сброс пароля</h2>
               <p className="text-xs text-slate-400 font-sans max-w-sm">
@@ -192,24 +182,16 @@ export default function OwnerPasswordPrompt({
                 />
 
                 {resetError && (
-                  <motion.p
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="text-rose-500 text-xs font-bold font-sans mt-1 text-center"
-                  >
+                  <p className="text-rose-500 text-xs font-bold font-sans mt-1 text-center">
                     {resetError}
-                  </motion.p>
+                  </p>
                 )}
 
                 {resetSuccessMsg && (
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-emerald-500 text-xs font-bold font-sans mt-1 text-center flex items-center justify-center gap-1"
-                  >
+                  <p className="text-emerald-500 text-xs font-bold font-sans mt-1 text-center flex items-center justify-center gap-1">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                     {resetSuccessMsg}
-                  </motion.p>
+                  </p>
                 )}
               </div>
 
@@ -235,7 +217,7 @@ export default function OwnerPasswordPrompt({
             </div>
           </form>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }

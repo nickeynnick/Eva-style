@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { 
   Employee, 
   Visit, 
@@ -19,6 +19,7 @@ import {
   getVisitCashAmount,
   getVisitCardAmount,
   getVisitTransferAmount,
+  ALL_PAYMENT_METHODS,
 } from "../utils/paymentUtils";
 import {
   getActiveSettingsForDate,
@@ -29,11 +30,13 @@ import {
 import {
   getDebtPaymentAcquiringCost,
   getDebtPaymentCardTotal,
+  getExtraIncomeAcquiring,
+  previousIsoDate,
+  computeProjectedEndCash,
 } from "../utils/dailyFinanceUtils";
 import { printShiftSummary } from "../utils/shiftSummary";
 import { showAppAlert } from "../utils/appDialog";
 import { 
-  Calendar, 
   Plus, 
   CreditCard, 
   RussianRuble, 
@@ -48,6 +51,7 @@ import {
   Clock,
   Printer,
 } from "lucide-react";
+import MarkedDatePicker from "./MarkedDatePicker";
 
 interface DailyAccountingProps {
   employees: Employee[];
@@ -123,10 +127,12 @@ function DailyAccounting({
   // Input cash form state
   const [startingCashInput, setStartingCashInput] = useState<number | "">("");
   
-  // Custom expense input state
+  // Custom expense / income input state
   const [expAmount, setExpAmount] = useState<number | "">("");
   const [expComment, setExpComment] = useState("");
   const [expCategory, setExpCategory] = useState("Покупка товара");
+  const [expKind, setExpKind] = useState<"минус" | "плюс">("минус");
+  const [expPaymentMethod, setExpPaymentMethod] = useState<PaymentMethod>("наличные");
 
   // Get current day cash state
   const dayCashState = dailyCash.find(c => c.date === selectedDate);
@@ -148,6 +154,14 @@ function DailyAccounting({
   const allDayExtraTransactionsIncludeDeleted = showDeletedVisits ? rawDayExtraTransactions : rawDayExtraTransactions.filter(t => !t.isDeleted);
 
   const daySettings = getActiveSettingsForDate(settingsRules, selectedDate);
+
+  const visitMarkedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const v of visits) {
+      if (!v.isDeleted) dates.add(v.date);
+    }
+    return dates;
+  }, [visits]);
 
   // Compute Solarium dynamic revenue (по сохранённому тарифу каждого сеанса)
   const solariumCashRevenue = daySolariumSessions
@@ -689,24 +703,33 @@ function DailyAccounting({
     setVisits(prev => prev.filter(v => v.id !== visitId));
   };
 
-  // Add custom operational expense
+  // Add custom operational expense or income
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (expAmount === "" || !expComment) {
-      showAppAlert("Введите сумму и комментарий к расходу");
+      showAppAlert(expKind === "плюс" ? "Введите сумму и комментарий к доходу" : "Введите сумму и комментарий к расходу");
       return;
     }
+
+    const amount = Number(expAmount);
+    const acquiringCost =
+      expKind === "плюс" && expPaymentMethod === "дебетовая карта"
+        ? calculateAcquiring(amount, "дебетовая карта", daySettings.acquiringCommission)
+        : undefined;
 
     const newTx: ExtraTransaction = {
       id: "tx-" + Date.now(),
       date: selectedDate,
-      type: "минус",
-      amount: Number(expAmount),
+      type: expKind,
+      amount,
       comment: expComment,
-      category: expCategory
+      category: expKind === "минус" ? expCategory : expCategory || "Доп. доход",
+      ...(expKind === "плюс"
+        ? { paymentMethod: expPaymentMethod, acquiringCost }
+        : {}),
     };
 
-    setExtraTransactions(prev => [...prev, newTx]);
+    setExtraTransactions((prev) => [...prev, newTx]);
     setExpAmount("");
     setExpComment("");
   };
@@ -767,10 +790,6 @@ function DailyAccounting({
     .filter(p => p.paymentMethod === "дебетовая карта")
     .reduce((sum, p) => sum + getDebtPaymentAcquiringCost(p, settingsRules), 0);
 
-  const totalAcquiringToday = Math.round(
-    (totalAcquiringFromVisits + totalAcquiringFromSolarium + totalAcquiringFromCerts + totalAcquiringFromDebts) * 100
-  ) / 100;
-
   const dayExpensesTotal = dayExtraTransactions
     .filter(t => t.type === "минус")
     .reduce((sum, t) => sum + t.amount, 0);
@@ -778,6 +797,43 @@ function DailyAccounting({
   const dayAdditionsTotal = dayExtraTransactions
     .filter(t => t.type === "плюс")
     .reduce((sum, t) => sum + t.amount, 0);
+
+  const dayAdditionsCash = dayExtraTransactions
+    .filter(
+      (t) =>
+        t.type === "плюс" &&
+        (!t.paymentMethod || t.paymentMethod === "наличные")
+    )
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const dayAdditionsCard = dayExtraTransactions
+    .filter((t) => t.type === "плюс" && t.paymentMethod === "дебетовая карта")
+    .reduce((sum, t) => sum + t.amount + getExtraIncomeAcquiring(t, settingsRules), 0);
+
+  const dayAdditionsTransfer = dayExtraTransactions
+    .filter((t) => t.type === "плюс" && t.paymentMethod === "перевод")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const dayAdditionsCert = dayExtraTransactions
+    .filter((t) => t.type === "плюс" && t.paymentMethod === "сертификат")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const dayAdditionsDebt = dayExtraTransactions
+    .filter((t) => t.type === "плюс" && t.paymentMethod === "в долг")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const totalAcquiringFromExtraIncome = dayExtraTransactions
+    .filter((t) => t.type === "плюс")
+    .reduce((sum, t) => sum + getExtraIncomeAcquiring(t, settingsRules), 0);
+
+  const totalAcquiringToday = Math.round(
+    (totalAcquiringFromVisits +
+      totalAcquiringFromSolarium +
+      totalAcquiringFromCerts +
+      totalAcquiringFromDebts +
+      totalAcquiringFromExtraIncome) *
+      100
+  ) / 100;
 
   const certSalesCashToday = giftCertificates
     .filter(c => c.soldDate === selectedDate && c.salePaymentMethod === "наличные")
@@ -800,10 +856,14 @@ function DailyAccounting({
   const debtPaymentsTransfer = debtPaymentsToday.filter(p => p.paymentMethod === "перевод").reduce((s, p) => s + p.amount, 0);
 
   const transferTotalToday =
-    visitsTransferTotal + solariumTransferRevenue + certSalesTransferToday + debtPaymentsTransfer;
+    visitsTransferTotal +
+    solariumTransferRevenue +
+    certSalesTransferToday +
+    debtPaymentsTransfer +
+    dayAdditionsTransfer;
 
   const cashInflowToday =
-    visitsCashTotal + solariumCashRevenue + dayAdditionsTotal + certSalesCashToday + debtPaymentsCash;
+    visitsCashTotal + solariumCashRevenue + dayAdditionsCash + certSalesCashToday + debtPaymentsCash;
 
   // Solarium
   const solariumTotal = totalSolariumRevenue;
@@ -827,6 +887,33 @@ function DailyAccounting({
     : 0;
 
   const endCash = Math.max(0, startCash + cashInflowToday - dayExpensesTotal - activeMasterPayoutsToday);
+
+  const yesterdayDate = previousIsoDate(selectedDate);
+  const yesterdayEndCash = useMemo(
+    () =>
+      computeProjectedEndCash(
+        yesterdayDate,
+        dailyCash,
+        visits,
+        solariumSessions,
+        extraTransactions,
+        masterTransactions ?? [],
+        giftCertificates,
+        debtRecords,
+        settingsRules
+      ),
+    [
+      yesterdayDate,
+      dailyCash,
+      visits,
+      solariumSessions,
+      extraTransactions,
+      masterTransactions,
+      giftCertificates,
+      debtRecords,
+      settingsRules,
+    ]
+  );
 
   const handlePrintShiftSummary = () => {
     printShiftSummary({
@@ -865,19 +952,15 @@ function DailyAccounting({
           </h2>
           <p className="text-[10px] text-slate-400 mt-1">Регистрация визитов, управление кассой и материалами</p>
         </div>
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Выбрать дату:</span>
-          <div className="flex items-center gap-1.5">
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-1.5 h-3.5 w-3.5 text-rose-500" />
-              <input 
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="pl-8 pr-2.5 py-1.5 border border-slate-200 rounded bg-slate-50 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-rose-200 focus:border-rose-300"
-                id="selected-date-picker"
-              />
-            </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <MarkedDatePicker
+              value={selectedDate}
+              onChange={setSelectedDate}
+              markedDates={visitMarkedDates}
+              id="selected-date-picker"
+            />
             <button
               type="button"
               onClick={() => {
@@ -887,7 +970,7 @@ function DailyAccounting({
                 const day = d.getDate().toString().padStart(2, "0");
                 setSelectedDate(`${year}-${month}-${day}`);
               }}
-              className="px-2.5 py-1.5 text-xs font-bold bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-600 rounded cursor-pointer transition-colors"
+              className="px-2.5 py-1.5 text-xs font-bold bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-600 rounded cursor-pointer transition-colors uppercase tracking-wider"
               id="set-today-btn"
             >
               Сегодня
@@ -1553,6 +1636,18 @@ function DailyAccounting({
                   Задать
                 </button>
               </div>
+              <p className="text-[10px] text-slate-500 leading-snug">
+                Вчера на конец дня:{" "}
+                <strong className="font-mono text-slate-700">
+                  {yesterdayEndCash.toLocaleString()} ₽
+                </strong>
+                <span className="text-slate-400 font-mono ml-1">
+                  ({new Date(yesterdayDate + "T12:00:00").toLocaleDateString("ru-RU", {
+                    day: "numeric",
+                    month: "short",
+                  })})
+                </span>
+              </p>
             </form>
 
             {/* Salon materials consumed / stats indicators */}
@@ -1577,9 +1672,41 @@ function DailyAccounting({
             </div>
           </div>
 
-          {/* Add dynamic operating expense form */}
+          {/* Add dynamic operating expense / income form */}
           <div className="border-t border-slate-150 pt-3.5 space-y-2.5">
-            <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">Внести операционный расход за день (Минусы)</span>
+            <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+              Операции за день: расходы и доп. доходы
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setExpKind("минус");
+                  setExpCategory("Покупка товара");
+                }}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-colors ${
+                  expKind === "минус"
+                    ? "bg-red-50 border-red-200 text-red-700"
+                    : "bg-slate-50 border-slate-200 text-slate-500"
+                }`}
+              >
+                Расход (−)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpKind("плюс");
+                  setExpCategory("Доп. доход");
+                }}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-colors ${
+                  expKind === "плюс"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    : "bg-slate-50 border-slate-200 text-slate-500"
+                }`}
+              >
+                Доп. доход (+)
+              </button>
+            </div>
             <form onSubmit={handleAddExpense} className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <div className="md:col-span-1">
                 <input
@@ -1595,7 +1722,7 @@ function DailyAccounting({
               <div className="md:col-span-2">
                 <input
                   type="text"
-                  placeholder="Комментарий (описание расхода)"
+                  placeholder={expKind === "плюс" ? "Комментарий (описание дохода)" : "Комментарий (описание расхода)"}
                   value={expComment}
                   onChange={(e) => setExpComment(e.target.value)}
                   className="w-full text-xs border border-slate-200 rounded px-2.5 py-1.5 focus:outline-none input-high-density"
@@ -1603,50 +1730,96 @@ function DailyAccounting({
                 />
               </div>
               <div className="md:col-span-1">
-                <select
-                  value={expCategory}
-                  onChange={(e) => setExpCategory(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none bg-white font-semibold"
-                >
-                  <option value="Свет">Свет / Вода</option>
-                  <option value="Вывоз мусора">Вывоз мусора</option>
-                  <option value="Покупка товара">Материалы</option>
-                  <option value="Хозрасходы">Хозрасходы</option>
-                  <option value="Прочее">Прочее</option>
-                </select>
+                {expKind === "минус" ? (
+                  <select
+                    value={expCategory}
+                    onChange={(e) => setExpCategory(e.target.value)}
+                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none bg-white font-semibold"
+                  >
+                    <option value="Свет">Свет / Вода</option>
+                    <option value="Вывоз мусора">Вывоз мусора</option>
+                    <option value="Покупка товара">Материалы</option>
+                    <option value="Хозрасходы">Хозрасходы</option>
+                    <option value="Прочее">Прочее</option>
+                  </select>
+                ) : (
+                  <select
+                    value={expPaymentMethod}
+                    onChange={(e) => setExpPaymentMethod(e.target.value as PaymentMethod)}
+                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none bg-white font-semibold"
+                  >
+                    {ALL_PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>
+                        {paymentMethodLabel(m)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
+              {expKind === "плюс" && (
+                <div className="md:col-span-4">
+                  <select
+                    value={expCategory}
+                    onChange={(e) => setExpCategory(e.target.value)}
+                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none bg-white font-semibold"
+                  >
+                    <option value="Доп. доход">Доп. доход</option>
+                    <option value="Аренда места">Аренда места</option>
+                    <option value="Продажа товара">Продажа товара</option>
+                    <option value="Прочее">Прочее</option>
+                  </select>
+                </div>
+              )}
               <button
                 type="submit"
-                className="md:col-span-4 bg-slate-900 hover:bg-slate-800 text-white rounded py-1 font-bold text-xs uppercase tracking-wider transition-colors mt-0.5 shadow-xs"
+                className={`md:col-span-4 rounded py-1 font-bold text-xs uppercase tracking-wider transition-colors mt-0.5 shadow-xs text-white ${
+                  expKind === "плюс"
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-slate-900 hover:bg-slate-800"
+                }`}
               >
-                + Записать расход
+                {expKind === "плюс" ? "+ Записать доход" : "+ Записать расход"}
               </button>
             </form>
 
-            {/* List of today op expenses */}
+            {/* List of today ops */}
             {allDayExtraTransactionsIncludeDeleted.length > 0 && (
               <div className="space-y-1 pt-1.5 font-sans">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Операции расходов за сегодня:</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Операции за день:</span>
                 <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                   {allDayExtraTransactionsIncludeDeleted.map(tx => {
                     const isDeleted = tx.isDeleted;
+                    const isIncome = tx.type === "плюс";
                     return (
                       <div 
                         key={tx.id} 
                         className={`flex justify-between items-center text-[10px] py-1.5 px-2.5 rounded border transition-all ${
                           isDeleted 
                             ? "bg-red-50/20 border-red-200 opacity-70" 
-                            : "bg-slate-50 border-slate-200 shadow-2xs"
+                            : isIncome
+                              ? "bg-emerald-50/40 border-emerald-100 shadow-2xs"
+                              : "bg-slate-50 border-slate-200 shadow-2xs"
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <span className={`font-bold mr-1.5 font-mono ${isDeleted ? "line-through text-slate-400" : "text-red-600"}`}>
-                            -{tx.amount} ₽
+                          <span className={`font-bold mr-1.5 font-mono ${
+                            isDeleted
+                              ? "line-through text-slate-400"
+                              : isIncome
+                                ? "text-emerald-600"
+                                : "text-red-600"
+                          }`}>
+                            {isIncome ? "+" : "-"}{tx.amount} ₽
                           </span>
                           <span className={`font-semibold ${isDeleted ? "line-through text-slate-450" : "text-slate-600"}`}>
                             {tx.comment}
                           </span>
                           <span className="text-[8px] text-slate-400 ml-1.5 font-mono">({tx.category})</span>
+                          {isIncome && tx.paymentMethod && (
+                            <span className="text-[8px] text-slate-500 ml-1.5 font-mono">
+                              · {paymentMethodLabel(tx.paymentMethod)}
+                            </span>
+                          )}
                           {isDeleted && (
                             <span className="text-[8px] bg-red-100 border border-red-200 text-red-700 font-bold px-1 py-0.5 rounded uppercase tracking-wider ml-1.5">
                               Удален
@@ -1813,6 +1986,20 @@ function DailyAccounting({
                <span className="text-slate-400">Операционные расходы дня:</span>
                <span className="font-mono font-bold text-red-400">-{dayExpensesTotal.toLocaleString()} ₽</span>
             </div>
+
+            {dayAdditionsTotal > 0 && (
+              <div className="flex justify-between items-baseline pt-1.5 font-sans">
+                <span className="text-slate-400">Доп. доходы дня (в чистую прибыль):</span>
+                <div className="text-right">
+                  <span className="font-mono font-bold text-emerald-400">+{dayAdditionsTotal.toLocaleString()} ₽</span>
+                  <div className="text-[9px] text-slate-500 font-mono">
+                    (Нал: {dayAdditionsCash} ₽ | Карта: {dayAdditionsCard} ₽ | Перевод: {dayAdditionsTransfer} ₽
+                    {dayAdditionsCert > 0 ? ` | Сертиф.: ${dayAdditionsCert} ₽` : ""}
+                    {dayAdditionsDebt > 0 ? ` | Долг: ${dayAdditionsDebt} ₽` : ""})
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Salon materials expenses */}
             <div className="flex justify-between items-baseline pt-1.5 font-sans">
