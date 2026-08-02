@@ -55,8 +55,6 @@ export function buildStoreSnapshot(state: AppStoreState): Record<string, unknown
       canTakeVisits: e.position !== "Администратор",
     })),
     settingsRules: state.settingsRules,
-    adminDaysRates: state.adminDaysRates,
-    adminDaysRatesRules: state.adminDaysRatesRules,
     materialPrices: state.materialPrices,
     materialPackaging: state.materialPackaging,
     materialConsumptions: state.materialConsumptions,
@@ -188,7 +186,8 @@ const WRITE_ACTIONS_SCHEMA = `
     { "type": "update_extra_transaction_comment", "id": string, "comment": string },
     { "type": "add_settings_rule", "effectiveDate": "YYYY-MM-DD", "acquiringCommission": number, "solariumMinuteRate": number, "adminBaseRate": number? },
     { "type": "update_settings_rule", "id": string, "effectiveDate": string?, "acquiringCommission": number?, "solariumMinuteRate": number?, "adminBaseRate": number? },
-    { "type": "update_admin_days_rates", "monday": number?, "tuesday": number?, "wednesday": number?, "thursday": number?, "friday": number?, "saturday": number?, "sunday": number? },
+    { "type": "upsert_admin_day_wage", "adminId": string?, "adminName": string?, "date": "YYYY-MM-DD", "amount": number },
+    { "type": "delete_admin_day_wage", "adminId": string?, "adminName": string?, "date": "YYYY-MM-DD" },
     { "type": "update_material_packaging", "key": "shampooProscenia"|"lotionAcPretreatment"|"laminatingGel"|"maskProscenia"|"shampooProeditCurlFit"|"basePliaBase"|"lotionPliaStep1"|"lotionPliaStep2"|"conditionerPearl"|"serumAfterPerm", "price": number, "volume": number },
     { "type": "update_debt_comment", "id": string, "comment": string },
     { "type": "log_note", "message": string }
@@ -204,6 +203,7 @@ const WRITE_ACTIONS_SCHEMA = `
 - Для визита «в долг» обязателен clientName; для «сертификат» — giftCertificateId из снимка данных.
 - delete_visit — мягкое удаление; delete_extra_transaction — мягкое; delete_solarium_session — полное удаление сеанса.
 - update_material_packaging пересчитывает себестоимость ₽/мл(гр).
+- upsert_admin_day_wage / delete_admin_day_wage — ЗП администратора за конкретный день (табель); adminName или adminId.
 - log_note пишет заметку в журнал действий помощника.
 - Для относительных дат используй блок «ТЕКУЩЕЕ ВРЕМЯ».
 - ЗАПРЕЩЕНО: удаление сотрудников, сброс пароля, полный сброс данных, правка исходного кода.

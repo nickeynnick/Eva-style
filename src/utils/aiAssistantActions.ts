@@ -1,7 +1,7 @@
 import type { AppStorePatch, AppStoreState } from "../store/schema";
 import { deriveMaterialPricesFromPackaging } from "../store/materialPrices";
 import type {
-  AdminDayOfWeekRate,
+  AdminShift,
   DebtRecord,
   Employee,
   ExtraTransaction,
@@ -37,16 +37,6 @@ const PACKAGING_KEYS = new Set([
   "conditionerPearl",
   "serumAfterPerm",
 ]);
-
-const ADMIN_DAY_KEYS: (keyof AdminDayOfWeekRate)[] = [
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-  "sunday",
-];
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -94,6 +84,18 @@ function resolveEmployeeId(
 
 function canEmployeeTakeVisits(emp: Employee): boolean {
   return emp.position !== Position.Administrator;
+}
+
+function resolveAdmin(
+  employees: Employee[],
+  opts: { adminId?: string; adminName?: string }
+): Employee | null {
+  const emp = resolveEmployeeId(employees, {
+    masterId: opts.adminId,
+    masterName: opts.adminName,
+  });
+  if (!emp || emp.position !== Position.Administrator) return null;
+  return emp;
 }
 
 export type AiAssistantAction =
@@ -162,15 +164,13 @@ export type AiAssistantAction =
       adminBaseRate?: number;
     }
   | {
-      type: "update_admin_days_rates";
-      monday?: number;
-      tuesday?: number;
-      wednesday?: number;
-      thursday?: number;
-      friday?: number;
-      saturday?: number;
-      sunday?: number;
+      type: "upsert_admin_day_wage";
+      adminId?: string;
+      adminName?: string;
+      date: string;
+      amount: number;
     }
+  | { type: "delete_admin_day_wage"; adminId?: string; adminName?: string; date: string }
   | {
       type: "update_material_packaging";
       key: string;
@@ -413,19 +413,23 @@ function normalizeAction(raw: unknown): AiAssistantAction | null {
     };
   }
 
-  if (type === "update_admin_days_rates") {
-    const rates: Partial<AdminDayOfWeekRate> = {};
-    let any = false;
-    for (const key of ADMIN_DAY_KEYS) {
-      if (o[key] !== undefined) {
-        const v = num(o[key]);
-        if (v === null || v < 0) return null;
-        rates[key] = v;
-        any = true;
-      }
-    }
-    if (!any) return null;
-    return { type, ...rates };
+  if (type === "upsert_admin_day_wage") {
+    const date = String(o.date || "");
+    const amount = num(o.amount);
+    if (!DATE_RE.test(date) || amount === null || !(amount > 0)) return null;
+    const adminId = o.adminId != null ? String(o.adminId) : undefined;
+    const adminName = o.adminName != null ? String(o.adminName).trim() : undefined;
+    if (!adminId && !adminName) return null;
+    return { type, date, amount, adminId, adminName };
+  }
+
+  if (type === "delete_admin_day_wage") {
+    const date = String(o.date || "");
+    if (!DATE_RE.test(date)) return null;
+    const adminId = o.adminId != null ? String(o.adminId) : undefined;
+    const adminName = o.adminName != null ? String(o.adminName).trim() : undefined;
+    if (!adminId && !adminName) return null;
+    return { type, date, adminId, adminName };
   }
 
   if (type === "update_material_packaging") {
@@ -521,8 +525,10 @@ export function describeAction(action: AiAssistantAction, state?: AppStoreState)
       return `Новое правило тарифов с ${action.effectiveDate}: эквайринг ${action.acquiringCommission}%, солярий ${action.solariumMinuteRate} ₽/мин`;
     case "update_settings_rule":
       return `Изменить правило тарифов`;
-    case "update_admin_days_rates":
-      return `Обновить ставки администраторов по дням недели`;
+    case "upsert_admin_day_wage":
+      return `ЗП администратора за ${action.date}: ${action.amount} ₽`;
+    case "delete_admin_day_wage":
+      return `Удалить ЗП администратора за ${action.date}`;
     case "update_material_packaging":
       return `Обновить прайс: ${packagingLabel[action.key] || "материал"} — ${action.price} ₽ / объём ${action.volume}`;
     case "update_debt_comment":
@@ -552,7 +558,7 @@ export function applyAssistantActions(
   let debtRecords: DebtRecord[] | undefined;
   let solariumSessions: SolariumSession[] | undefined;
   let settingsRules: SettingsRule[] | undefined;
-  let adminDaysRates: AdminDayOfWeekRate | undefined;
+  let adminShifts: AdminShift[] | undefined;
   let materialPackaging: AppStoreState["materialPackaging"] | undefined;
   let materialPrices: AppStoreState["materialPrices"] | undefined;
   let giftCertificates = state.giftCertificates;
@@ -580,6 +586,10 @@ export function applyAssistantActions(
   const ensureRules = () => {
     if (!settingsRules) settingsRules = [...state.settingsRules];
     return settingsRules;
+  };
+  const ensureAdminShifts = () => {
+    if (!adminShifts) adminShifts = [...state.adminShifts];
+    return adminShifts;
   };
 
   for (const action of actions) {
@@ -885,13 +895,52 @@ export function applyAssistantActions(
         continue;
       }
 
-      if (action.type === "update_admin_days_rates") {
-        adminDaysRates = {
-          ...(adminDaysRates ?? state.adminDaysRates),
-          ...Object.fromEntries(
-            ADMIN_DAY_KEYS.filter((k) => action[k] !== undefined).map((k) => [k, action[k] as number])
-          ),
-        } as AdminDayOfWeekRate;
+      if (action.type === "upsert_admin_day_wage") {
+        const admin = resolveAdmin(state.employees, {
+          adminId: action.adminId,
+          adminName: action.adminName,
+        });
+        if (!admin) {
+          errors.push(
+            `Администратор не найден (${action.adminName || action.adminId || "—"})`
+          );
+          continue;
+        }
+        const list = ensureAdminShifts();
+        const idx = list.findIndex((s) => s.adminId === admin.id && s.date === action.date);
+        const amount = Math.round(action.amount);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], rate: amount };
+        } else {
+          list.push({
+            id: newId("ai-ashift"),
+            adminId: admin.id,
+            date: action.date,
+            rate: amount,
+          });
+        }
+        applied.push(describeAction(action, state));
+        continue;
+      }
+
+      if (action.type === "delete_admin_day_wage") {
+        const admin = resolveAdmin(state.employees, {
+          adminId: action.adminId,
+          adminName: action.adminName,
+        });
+        if (!admin) {
+          errors.push(
+            `Администратор не найден (${action.adminName || action.adminId || "—"})`
+          );
+          continue;
+        }
+        const list = ensureAdminShifts();
+        const next = list.filter((s) => !(s.adminId === admin.id && s.date === action.date));
+        if (next.length === list.length) {
+          errors.push(`Начисление за ${action.date} не найдено`);
+          continue;
+        }
+        adminShifts = next;
         applied.push(describeAction(action, state));
         continue;
       }
@@ -927,7 +976,7 @@ export function applyAssistantActions(
   if (debtRecords) patch.debtRecords = debtRecords;
   if (solariumSessions) patch.solariumSessions = solariumSessions;
   if (settingsRules) patch.settingsRules = settingsRules;
-  if (adminDaysRates) patch.adminDaysRates = adminDaysRates;
+  if (adminShifts) patch.adminShifts = adminShifts;
   if (materialPackaging) patch.materialPackaging = materialPackaging;
   if (materialPrices) patch.materialPrices = materialPrices;
   if (giftCertificates !== state.giftCertificates) patch.giftCertificates = giftCertificates;

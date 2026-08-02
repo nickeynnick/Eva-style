@@ -4,8 +4,6 @@ import {
   Position, 
   SettingsRule, 
   RawMaterialPrices, 
-  AdminDayOfWeekRate, 
-  AdminDaysRateRule,
   ExtraTransaction, 
   Visit, 
   SolariumSession,
@@ -99,10 +97,6 @@ interface OwnerSectionProps {
   setMaterialPackaging: React.Dispatch<React.SetStateAction<Record<string, { price: number; volume: number }>>>;
   materialConsumptions: any;
   setMaterialConsumptions: any;
-  adminDaysRates: AdminDayOfWeekRate;
-  setAdminDaysRates: React.Dispatch<React.SetStateAction<AdminDayOfWeekRate>>;
-  adminDaysRatesRules?: AdminDaysRateRule[];
-  setAdminDaysRatesRules?: React.Dispatch<React.SetStateAction<AdminDaysRateRule[]>>;
   extraTransactions: ExtraTransaction[];
   setExtraTransactions: React.Dispatch<React.SetStateAction<ExtraTransaction[]>>;
   visits: Visit[];
@@ -160,10 +154,6 @@ export default function OwnerSection({
   setMaterialPackaging,
   materialConsumptions,
   setMaterialConsumptions,
-  adminDaysRates,
-  setAdminDaysRates,
-  adminDaysRatesRules = [],
-  setAdminDaysRatesRules = () => {},
   extraTransactions,
   setExtraTransactions,
   visits,
@@ -1242,46 +1232,7 @@ export default function OwnerSection({
     setSettingsRules(prev => prev.filter(r => r.id !== id));
   };
 
-  // Rule builder state for Date-based administrator daily rate modifications
-  const [adminRuleEffectiveDate, setAdminRuleEffectiveDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  });
-  const [adminRuleMon, setAdminRuleMon] = useState(adminDaysRates.monday || 1500);
-  const [adminRuleTue, setAdminRuleTue] = useState(adminDaysRates.tuesday || 1500);
-  const [adminRuleWed, setAdminRuleWed] = useState(adminDaysRates.wednesday || 1500);
-  const [adminRuleThu, setAdminRuleThu] = useState(adminDaysRates.thursday || 1500);
-  const [adminRuleFri, setAdminRuleFri] = useState(adminDaysRates.friday || 1500);
-  const [adminRuleSat, setAdminRuleSat] = useState(adminDaysRates.saturday || 1800);
-  const [adminRuleSun, setAdminRuleSun] = useState(adminDaysRates.sunday || 1800);
-
-  const handleSaveAdminDaysRule = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newRule: AdminDaysRateRule = {
-      id: "admin-days-rule-" + Date.now(),
-      effectiveDate: adminRuleEffectiveDate,
-      monday: adminRuleMon,
-      tuesday: adminRuleTue,
-      wednesday: adminRuleWed,
-      thursday: adminRuleThu,
-      friday: adminRuleFri,
-      saturday: adminRuleSat,
-      sunday: adminRuleSun
-    };
-    setAdminDaysRatesRules(prev => [newRule, ...prev]);
-    showAppAlert("Новое правило ставок администратора сохранено!");
-  };
-
-  const handleRemoveAdminDaysRule = (id: string) => {
-    if (adminDaysRatesRules.length <= 1) {
-      showAppAlert("Нельзя удалить последнее правило ставок!");
-      return;
-    }
-    setAdminDaysRatesRules(prev => prev.filter(r => r.id !== id));
-  };
+  // Day-of-week admin tariffs removed: salary is entered manually per day in the timesheet.
 
   // Raw Material prices live state edit
   const updateMaterialPrice = (key: keyof RawMaterialPrices, value: number) => {
@@ -1289,39 +1240,6 @@ export default function OwnerSection({
       ...prev,
       [key]: value
     }));
-  };
-
-  // Day of week rate editor
-  const handleUpdateDayRate = (day: keyof AdminDayOfWeekRate, value: number) => {
-    setAdminDaysRates(prev => ({
-      ...prev,
-      [day]: value
-    }));
-  };
-
-  const getActiveAdminRuleForToday = () => {
-    const localNow = new Date();
-    const offset = localNow.getTimezoneOffset();
-    const localDate = new Date(localNow.getTime() - (offset * 60 * 1000));
-    const todayStr = localDate.toISOString().split("T")[0];
-
-    if (adminDaysRatesRules && adminDaysRatesRules.length > 0) {
-      const sorted = [...adminDaysRatesRules].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
-      const activeRule = sorted.find(r => r.effectiveDate <= todayStr);
-      if (activeRule) return activeRule;
-      return sorted[sorted.length - 1];
-    }
-    return {
-      id: "default",
-      effectiveDate: "По умолчанию",
-      monday: adminDaysRates.monday,
-      tuesday: adminDaysRates.tuesday,
-      wednesday: adminDaysRates.wednesday,
-      thursday: adminDaysRates.thursday,
-      friday: adminDaysRates.friday,
-      saturday: adminDaysRates.saturday,
-      sunday: adminDaysRates.sunday
-    };
   };
 
   return (
@@ -2531,7 +2449,7 @@ export default function OwnerSection({
               .reduce((sum, t) => sum + t.amount, 0);
 
             const totalFines = periodTxs
-              .filter(t => t.type === "штраф" || t.type === "вычет аренды")
+              .filter(t => t.type === "вычет" || t.type === "вычет аренды")
               .reduce((sum, t) => sum + t.amount, 0);
 
             const totalExtras = periodTxs
@@ -2595,7 +2513,7 @@ export default function OwnerSection({
                   </div>
 
                   <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Штрафы и удержания</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Вычеты и удержания</span>
                     <div className="text-xl font-mono font-extrabold text-rose-600">
                       {totalFines.toLocaleString()} ₽
                     </div>
@@ -2689,11 +2607,11 @@ export default function OwnerSection({
 
                     {!collapsedBlocks["stats-transactions"] && (
                       periodTxs.length === 0 ? (
-                        <div className="text-center py-8 text-xs text-slate-400">Выплат/штрафов не зафиксировано за этот отрезок.</div>
+                        <div className="text-center py-8 text-xs text-slate-400">Выплат/вычетов не зафиксировано за этот отрезок.</div>
                       ) : (
                         <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
                           {periodTxs.map(t => {
-                            const isDed = t.type === "штраф" || t.type === "вычет аренды";
+                            const isDed = t.type === "вычет" || t.type === "вычет аренды";
                             return (
                               <div key={t.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
                                 <div className="flex justify-between items-center text-[11px]">
@@ -2861,152 +2779,6 @@ export default function OwnerSection({
                 )}
               </div>
             </div>
-          </div>
-
-          {/* EDIT DAY OF WEEK RATES WITH EFFECTIVE DATE CAPABILITY */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" id="days-rates-box">
-            <div className="flex items-center justify-between cursor-pointer select-none pb-2 border-b border-slate-50" onClick={() => toggleBlock("admin-days-rates")}>
-              <div>
-                <h3 className="text-md font-bold text-slate-800 flex items-center gap-1.5">
-                  <Calendar className="h-5 w-5 text-purple-600" />
-                  Тарифы и ставки работы администраторов по дням недели
-                </h3>
-                <p className="text-xs text-slate-400 font-sans mt-0.5">
-                  Укажите ставки работы администратора для каждого дня недели и дату, с которой это правило вступает в силу. Работает полная история изменений тарифов!
-                </p>
-              </div>
-              <button type="button" className="text-slate-400 hover:text-slate-600 focus:outline-none">
-                {collapsedBlocks["admin-days-rates"] ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-              </button>
-            </div>
-
-            {!collapsedBlocks["admin-days-rates"] && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Left Column: Form to define new rule */}
-              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200">
-                <h4 className="text-xs font-bold text-purple-800 uppercase tracking-wider mb-4">Создать правило ставок</h4>
-                <form onSubmit={handleSaveAdminDaysRule} className="space-y-4 font-sans text-xs">
-                  <div>
-                    <label className="block text-slate-500 font-semibold mb-1">Действует с даты:</label>
-                    <input
-                      type="date"
-                      value={adminRuleEffectiveDate}
-                      onChange={(e) => setAdminRuleEffectiveDate(e.target.value)}
-                      className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2 bg-white"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "Пн", state: adminRuleMon, set: setAdminRuleMon },
-                      { label: "Вт", state: adminRuleTue, set: setAdminRuleTue },
-                      { label: "Ср", state: adminRuleWed, set: setAdminRuleWed },
-                      { label: "Чт", state: adminRuleThu, set: setAdminRuleThu },
-                      { label: "Пт", state: adminRuleFri, set: setAdminRuleFri },
-                      { label: "Сб", state: adminRuleSat, set: setAdminRuleSat },
-                      { label: "Вс", state: adminRuleSun, set: setAdminRuleSun }
-                    ].map((day, idx) => (
-                      <div key={idx} className="space-y-1">
-                        <label className="block text-slate-400 text-[10px] font-bold uppercase">{day.label}</label>
-                        <input
-                          type="number"
-                          value={day.state}
-                          onChange={(e) => day.set(Number(e.target.value) || 0)}
-                          className="w-full text-xs font-bold font-mono border border-slate-200 bg-white rounded px-2 py-1 text-slate-800"
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-                  >
-                    Активировать правило ставок
-                  </button>
-                </form>
-              </div>
-
-              {/* Right Column: List history rules of administrator day rates */}
-              <div className="lg:col-span-2 space-y-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">История правил окладов администратора</h4>
-                
-                <div className="overflow-x-auto rounded-xl border border-slate-100">
-                  <table className="w-full text-left border-collapse text-xs md:text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider border-b border-slate-100">
-                        <th className="py-2.5 px-4 font-sans">С даты</th>
-                        <th className="py-2.5 px-4 text-center">Пн</th>
-                        <th className="py-2.5 px-4 text-center">Вт</th>
-                        <th className="py-2.5 px-4 text-center">Ср</th>
-                        <th className="py-2.5 px-4 text-center">Чт</th>
-                        <th className="py-2.5 px-4 text-center">Пт</th>
-                        <th className="py-2.5 px-4 text-center">Сб</th>
-                        <th className="py-2.5 px-4 text-center">Вс</th>
-                        <th className="py-2.5 px-4 text-center">Удалить</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-sans">
-                      {adminDaysRatesRules.map((rule) => (
-                        <tr key={rule.id} className="hover:bg-slate-50/30 transition-colors">
-                          <td className="py-3 px-4 font-bold text-purple-700 font-mono">{rule.effectiveDate}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium">{rule.monday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium">{rule.tuesday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium">{rule.wednesday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium">{rule.thursday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium">{rule.friday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium text-indigo-600">{rule.saturday}</td>
-                          <td className="py-3 px-4 text-center font-mono font-medium text-indigo-600">{rule.sunday}</td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => handleRemoveAdminDaysRule(rule.id)}
-                              className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {(() => {
-                  const active = getActiveAdminRuleForToday();
-                  return (
-                    <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100 space-y-2.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[11px] font-extrabold text-purple-800 uppercase tracking-wider block">Действующее правило:</span>
-                        <span className="text-[10px] font-bold font-mono text-purple-600 bg-white border border-purple-200 px-2 py-0.5 rounded-full shadow-3xs">
-                          {active.effectiveDate === "По умолчанию" ? "По умолчанию" : `С даты: ${active.effectiveDate}`}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-7 gap-2">
-                        {[
-                          { l: "Пн", k: "monday" },
-                          { l: "Вт", k: "tuesday" },
-                          { l: "Ср", k: "wednesday" },
-                          { l: "Чт", k: "thursday" },
-                          { l: "Пт", k: "friday" },
-                          { l: "Сб", k: "saturday" },
-                          { l: "Вс", k: "sunday" }
-                        ].map(d => (
-                          <div key={d.k} className="text-center bg-white border border-slate-100 rounded p-1 shadow-3xs">
-                            <span className="text-[9px] font-semibold text-slate-400 block mb-0.5">{d.l}</span>
-                            <span className="font-mono font-extrabold text-slate-700 text-xs text-center block">
-                              {(active as any)[d.k]}₽
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              </div>
-            </div>
-            )}
           </div>
 
           {/* Raw Material prices matches Excel screenshot & user request directly */}
@@ -3762,7 +3534,7 @@ export default function OwnerSection({
               {/* Toggle 4: Разрешить внесение выплат сотрудникам */}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="space-y-0.5 pr-2">
-                  <span className="text-xs font-bold text-slate-700 block text-left">Разрешить выдачу выплат/штрафов</span>
+                  <span className="text-xs font-bold text-slate-700 block text-left">Разрешить выдачу выплат/вычетов</span>
                   <span className="text-[11px] text-slate-400 block font-sans text-left">Разрешает начислять авансы и вычеты мастерам в табеле зарплат</span>
                 </div>
                 <button
@@ -3784,8 +3556,8 @@ export default function OwnerSection({
               {/* Toggle 5: Разрешить редактирование табеля администратора */}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="space-y-0.5 pr-2">
-                  <span className="text-xs font-bold text-slate-700 block text-left">Разрешить внесение изменений в табель администратора</span>
-                  <span className="text-[11px] text-slate-400 block font-sans text-left">Если выключено, отметки смен администратора фиксируются только для чтения</span>
+                  <span className="text-xs font-bold text-slate-700 block text-left">Разрешить редактирование табеля администратора</span>
+                  <span className="text-[11px] text-slate-400 block font-sans text-left">Если выключено, суммы ЗП за день в табеле только для чтения</span>
                 </div>
                 <button
                   type="button"

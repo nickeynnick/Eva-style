@@ -9,7 +9,7 @@ const PREFERENCE_LABELS: Record<string, string> = {
   allowDeleteDebts: "Разрешить удаление долгов",
   showVisitChangeHistory: "Показывать историю правок визита",
   allowMasterPayouts: "Разрешить выплаты мастерам",
-  allowAdminShiftEdits: "Разрешить правки смен администраторов",
+  allowAdminShiftEdits: "Разрешить правки табеля администраторов",
   hideFormulaCalculations: "Скрывать формулы калькулятора",
   keepOwnerUnlocked: "Держать раздел владелицы разблокированным",
   autoLockDuration: "Автоблокировка (мин)",
@@ -63,12 +63,12 @@ const COLLECTION_LABELS: Record<
     removed: "Удалена операция по мастеру",
   },
   adminShifts: {
-    one: "смена администратора",
-    few: "смены администратора",
-    many: "смен администратора",
-    added: "Добавлена смена администратора",
-    changed: "Изменена смена администратора",
-    removed: "Удалена смена администратора",
+    one: "день ЗП администратора",
+    few: "дня ЗП администратора",
+    many: "дней ЗП администратора",
+    added: "Добавлено начисление администратору за день",
+    changed: "Изменено начисление администратору за день",
+    removed: "Удалено начисление администратору за день",
   },
   dailyCash: {
     one: "запись кассы",
@@ -500,7 +500,7 @@ export function summarizeStoreChange(
     }
 
     if (key === "adminDaysRates") {
-      lines.push("Обновлены ставки администраторов по дням недели");
+      lines.push("Изменены устаревшие ставки администраторов (не используются)");
       continue;
     }
 

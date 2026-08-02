@@ -60,7 +60,7 @@ export default function ImportPreviewModal({ result, onConfirm, onCancel }: Impo
                 <li>Солярий: {preview.solariumSessions}</li>
                 <li>Сертификатов: {preview.giftCertificates}</li>
                 <li>Долгов: {preview.debtRecords}</li>
-                <li>Смен админов: {preview.adminShifts}</li>
+                <li>Начислений админов: {preview.adminShifts}</li>
               </ul>
               {preview.exportedAt && (
                 <p className="text-[10px] text-slate-400">

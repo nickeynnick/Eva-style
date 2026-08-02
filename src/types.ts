@@ -175,7 +175,8 @@ export interface AdminShift {
   id: string;
   adminId: string;
   date: string; // YYYY-MM-DD
-  rate: number; // recorded rate at that day
+  /** Зарплата администратора за этот день (₽), вводится вручную в табеле */
+  rate: number;
 }
 
 export interface MasterFinanceRecord {
@@ -193,7 +194,7 @@ export interface MasterFinanceRecord {
 export interface MasterTransaction {
   id: string;
   masterId: string;
-  type: "выплата" | "аванс" | "штраф" | "вычет аренды" | "возврат материалов" | "прочее";
+  type: "выплата" | "аванс" | "вычет" | "вычет аренды" | "возврат материалов" | "прочее";
   amount: number;
   date: string; // YYYY-MM-DD
   comment: string;

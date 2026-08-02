@@ -1,8 +1,8 @@
 # Ева-стиль — Учётный пульт
 
-**Версия 1.5.0** · Десктопное приложение для Windows (Tauri) для управления салоном красоты «Ева-стиль».
+**Версия 1.5.1** · Десктопное приложение для Windows (Tauri) для управления салоном красоты «Ева-стиль».
 
-Репозиторий: [github.com/nickeynnick/Eva-style](https://github.com/nickeynnick/Eva-style) · [Релиз v1.5.0](https://github.com/nickeynnick/Eva-style/releases/tag/v1.5.0)
+Репозиторий: [github.com/nickeynnick/Eva-style](https://github.com/nickeynnick/Eva-style) · [Релиз v1.5.1](https://github.com/nickeynnick/Eva-style/releases/tag/v1.5.1)
 
 ## Возможности
 
@@ -23,13 +23,13 @@
 
 ### Установщик (рекомендуется)
 
-1. Скачайте `eva-style-setup-1.5.0.exe` из [последнего релиза на GitHub](https://github.com/nickeynnick/Eva-style/releases/latest)
+1. Скачайте `eva-style-setup-1.5.1.exe` из [последнего релиза на GitHub](https://github.com/nickeynnick/Eva-style/releases/latest)
 2. Запустите файл и следуйте инструкциям мастера установки
 3. Запустите «Ева-стиль» с рабочего стола или из меню «Пуск»
 
 ### Портативная версия
 
-1. Скачайте `eva-style-1.5.0-portable.exe`
+1. Скачайте `eva-style-1.5.1-portable.exe`
 2. Запустите файл — установка не требуется
 
 Все данные сохраняются локально на вашем компьютере (в установщике — в `Документы → Ева-стиль → Data`).

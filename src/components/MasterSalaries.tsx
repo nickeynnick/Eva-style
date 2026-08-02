@@ -190,7 +190,7 @@ export default function MasterSalaries({
     
     // Deductions/Fines (and manual rent if typed as rent)
     const extraDeductions = masterTxs
-      .filter(t => t.type === "штраф" || t.type === "вычет аренды")
+      .filter(t => t.type === "вычет" || t.type === "вычет аренды")
       .reduce((sum, t) => sum + t.amount, 0);
 
     // Paid out
@@ -273,7 +273,7 @@ export default function MasterSalaries({
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800 font-sans tracking-tight">Финансовый баланс сотрудников (включая администраторов и владелицу)</h2>
-          <p className="text-sm text-slate-500 font-sans">Осуществляйте контроль долей за работу, выходов администраторов, аренды, выплат и вычетов всей команды</p>
+          <p className="text-sm text-slate-500 font-sans">Осуществляйте контроль долей за работу, зарплат администраторов, аренды, выплат и вычетов всей команды</p>
         </div>
       </div>
 
@@ -434,7 +434,7 @@ export default function MasterSalaries({
                 <th className="py-3 px-4 text-right text-emerald-600 bg-emerald-50/20">Начислено / Доля</th>
                 <th className="py-3 px-4 text-right text-amber-600">Мат. мастера (к з/п)</th>
                 <th className="py-3 px-4 text-right text-red-500">Снято за аренду</th>
-                <th className="py-3 px-4 text-right text-red-600">Вычеты / Штрафы</th>
+                <th className="py-3 px-4 text-right text-red-600">Вычеты</th>
                 <th className="py-3 px-4 text-right text-blue-600">Выплачено на руки</th>
                 <th className="py-3 px-4 text-right font-bold text-slate-800 bg-slate-50">Остаток к выдаче</th>
               </tr>
@@ -505,7 +505,7 @@ export default function MasterSalaries({
                     className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 bg-slate-50/50 focus:outline-none"
                   >
                     <option value="выплата">Выплата (аванс / получка)</option>
-                    <option value="штраф">Штраф / Вычет</option>
+                    <option value="вычет">Вычет</option>
                     <option value="вычет аренды">Вычет за аренду</option>
                     <option value="возврат материалов">Возврат за материалы</option>
                     <option value="прочее">Другие начисления/списания</option>
@@ -540,7 +540,7 @@ export default function MasterSalaries({
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Комментарий / Причина</label>
                   <textarea
-                    placeholder="Выдача аванса, штраф за опоздание (необязательно)..."
+                    placeholder="Выдача аванса, вычет (необязательно)..."
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2 bg-slate-50/50 focus:outline-none h-20 resize-none"
@@ -559,7 +559,7 @@ export default function MasterSalaries({
                 <span className="text-rose-500 block text-lg">🔒</span>
                 <span className="text-xs font-bold text-slate-700 block uppercase tracking-wide">Добавление выплат заблокировано</span>
                 <p className="text-[11px] text-slate-400">
-                  Владелица ограничила возможность внесения и редактирования выплат и штрафов в настройках безопасности.
+                  Владелица ограничила возможность внесения и редактирования выплат и вычетов в настройках безопасности.
                 </p>
               </div>
             )}
@@ -685,7 +685,7 @@ export default function MasterSalaries({
               <div className="space-y-2.5">
                 {filteredTxs.map(tx => {
                   const emp = employees.find(e => e.id === tx.masterId);
-                  const isNegative = tx.type === "штраф" || tx.type === "вычет аренды";
+                  const isNegative = tx.type === "вычет" || tx.type === "вычет аренды";
 
                   return (
                     <div key={tx.id} className="flex justify-between items-center border border-slate-100 rounded-xl p-3.5 hover:border-slate-200 transition-colors">
@@ -695,7 +695,7 @@ export default function MasterSalaries({
                           <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
                             tx.type === "выплата" || tx.type === "аванс" 
                               ? "bg-blue-50 text-blue-700"
-                              : tx.type === "штраф"
+                              : tx.type === "вычет"
                               ? "bg-red-50 text-red-700"
                               : "bg-amber-50 text-amber-700"
                           }`}>

@@ -1,10 +1,11 @@
-@import "tailwindcss";
-
-@custom-variant dark (&:where(.dark, .dark *));
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* -------------------------------------------------------------------------
    Тёмная тема: системные переопределения утилит (весь UI без правки каждой строки).
    Печать остаётся светлой.
+   Tailwind v3 (hex/rgb) — совместимость с WebView2 109 на Windows 7/8.
    ------------------------------------------------------------------------- */
 
 html.dark {
@@ -39,7 +40,7 @@ html.dark .bg-slate-200 {
   background-color: #1e293b !important;
 }
 html.dark .bg-slate-200\/50 {
-  background-color: rgb(30 41 59 / 0.5) !important;
+  background-color: rgba(30, 41, 59, 0.5) !important;
 }
 html.dark .bg-slate-900 {
   background-color: #020617 !important;
@@ -51,44 +52,44 @@ html.dark .bg-slate-950 {
 /* Акцентные светлые панели → тёмные оттенки той же палитры */
 html.dark .bg-rose-50,
 html.dark .bg-rose-50\/50 {
-  background-color: rgb(136 19 55 / 0.35) !important;
+  background-color: rgba(136, 19, 55, 0.35) !important;
 }
 html.dark .bg-rose-100 {
-  background-color: rgb(136 19 55 / 0.45) !important;
+  background-color: rgba(136, 19, 55, 0.45) !important;
 }
 html.dark .bg-emerald-50,
 html.dark .bg-emerald-50\/50 {
-  background-color: rgb(6 78 59 / 0.4) !important;
+  background-color: rgba(6, 78, 59, 0.4) !important;
 }
 html.dark .bg-emerald-100 {
-  background-color: rgb(6 78 59 / 0.5) !important;
+  background-color: rgba(6, 78, 59, 0.5) !important;
 }
 html.dark .bg-amber-50,
 html.dark .bg-amber-50\/50 {
-  background-color: rgb(120 53 15 / 0.4) !important;
+  background-color: rgba(120, 53, 15, 0.4) !important;
 }
 html.dark .bg-amber-100 {
-  background-color: rgb(120 53 15 / 0.5) !important;
+  background-color: rgba(120, 53, 15, 0.5) !important;
 }
 html.dark .bg-sky-50,
 html.dark .bg-blue-50,
 html.dark .bg-indigo-50,
 html.dark .bg-violet-50,
 html.dark .bg-purple-50 {
-  background-color: rgb(30 58 138 / 0.35) !important;
+  background-color: rgba(30, 58, 138, 0.35) !important;
 }
 html.dark .bg-red-50 {
-  background-color: rgb(127 29 29 / 0.4) !important;
+  background-color: rgba(127, 29, 29, 0.4) !important;
 }
 html.dark .bg-orange-50 {
-  background-color: rgb(124 45 18 / 0.4) !important;
+  background-color: rgba(124, 45, 18, 0.4) !important;
 }
 html.dark .bg-yellow-50 {
-  background-color: rgb(113 63 18 / 0.4) !important;
+  background-color: rgba(113, 63, 18, 0.4) !important;
 }
 html.dark .bg-teal-50,
 html.dark .bg-cyan-50 {
-  background-color: rgb(19 78 74 / 0.4) !important;
+  background-color: rgba(19, 78, 74, 0.4) !important;
 }
 
 /* Текст: светлый на тёмном */
@@ -158,19 +159,19 @@ html.dark .border-slate-300 {
 }
 html.dark .border-rose-100,
 html.dark .border-rose-200 {
-  border-color: rgb(251 113 133 / 0.35) !important;
+  border-color: rgba(251, 113, 133, 0.35) !important;
 }
 html.dark .border-emerald-100,
 html.dark .border-emerald-200 {
-  border-color: rgb(52 211 153 / 0.35) !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
 }
 html.dark .border-amber-100,
 html.dark .border-amber-200 {
-  border-color: rgb(251 191 36 / 0.35) !important;
+  border-color: rgba(251, 191, 36, 0.35) !important;
 }
 html.dark .border-indigo-100,
 html.dark .border-blue-100 {
-  border-color: rgb(129 140 248 / 0.35) !important;
+  border-color: rgba(129, 140, 248, 0.35) !important;
 }
 html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
 html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
@@ -188,7 +189,7 @@ html.dark .hover\:bg-slate-200\/50:hover {
 html.dark .hover\:bg-rose-50:hover,
 html.dark .hover\:bg-emerald-50:hover,
 html.dark .hover\:bg-emerald-100:hover {
-  background-color: rgb(30 41 59) !important;
+  background-color: rgb(30, 41, 59) !important;
 }
 html.dark .hover\:text-slate-800:hover,
 html.dark .hover\:text-slate-900:hover {
@@ -225,7 +226,7 @@ html.dark th {
   color: #cbd5e1;
 }
 html.dark tr:hover {
-  background-color: rgb(30 41 59 / 0.55);
+  background-color: rgba(30, 41, 59, 0.55);
 }
 
 /* Карточки со shadow на тёмном */
@@ -235,7 +236,7 @@ html.dark .shadow-md,
 html.dark .shadow-lg,
 html.dark .shadow-xl,
 html.dark .shadow-2xl {
-  --tw-shadow-color: rgb(0 0 0 / 0.45);
+  --tw-shadow-color: rgba(0, 0, 0, 0.45);
 }
 
 /* Модальный backdrop уже тёмный — панели через .bg-white выше */
@@ -247,7 +248,7 @@ html.dark img {
 }
 html.dark img[alt="Ева-стиль"] {
   filter: none;
-  box-shadow: 0 0 0 1px rgb(251 113 133 / 0.25);
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.25);
 }
 
 /* SVG-иконки lucide наследуют currentColor — оставляем как есть */
@@ -321,10 +322,10 @@ html.dark .border-transparent {
 html.dark .bg-white\/80,
 html.dark .bg-white\/90,
 html.dark .bg-white\/95 {
-  background-color: rgb(15 23 42 / 0.92) !important;
+  background-color: rgba(15, 23, 42, 0.92) !important;
 }
 
-/* Dev-логи: светлый текст на тёмном уже есть; не повышем яркость изображений логотипа сильно */
+/* Dev-логи: светлый текст на тёмном уже есть; не повышаем яркость изображений логотипа сильно */
 html.dark #app-header-bar img,
 html.dark [aria-hidden="true"] img {
   filter: none;

@@ -224,6 +224,20 @@ export function applyStoreMigrations(state: AppStoreState): AppStoreState {
     next.materialConsumptions as Record<string, unknown>
   );
   next.solariumSessions = migrateSolariumMinuteRates(next.solariumSessions, next.settingsRules);
+  next.masterTransactions = migrateMasterTransactionTypes(next.masterTransactions);
 
   return next;
+}
+
+/** Переименование типа операции «штраф» → «вычет» (старые бэкапы/локальные данные). */
+export function migrateMasterTransactionTypes(
+  txs: AppStoreState["masterTransactions"]
+): AppStoreState["masterTransactions"] {
+  let changed = false;
+  const migrated = txs.map((tx) => {
+    if ((tx.type as string) !== "штраф") return tx;
+    changed = true;
+    return { ...tx, type: "вычет" as const };
+  });
+  return changed ? migrated : txs;
 }

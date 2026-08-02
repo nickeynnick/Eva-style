@@ -233,13 +233,10 @@ export default function App() {
   const setSolariumSessions = useMemo(() => bindSetter("solariumSessions"), [bindSetter]);
   const setMasterTransactions = useMemo(() => bindSetter("masterTransactions"), [bindSetter]);
   const setAdminShifts = useMemo(() => bindSetter("adminShifts"), [bindSetter]);
-  const setAdminPaidWages = useMemo(() => bindSetter("adminPaidWages"), [bindSetter]);
   const setEmployees = useMemo(() => bindSetter("employees"), [bindSetter]);
   const setSettingsRules = useMemo(() => bindSetter("settingsRules"), [bindSetter]);
   const setMaterialPrices = useMemo(() => bindSetter("materialPrices"), [bindSetter]);
   const setMaterialConsumptions = useMemo(() => bindSetter("materialConsumptions"), [bindSetter]);
-  const setAdminDaysRates = useMemo(() => bindSetter("adminDaysRates"), [bindSetter]);
-  const setAdminDaysRatesRules = useMemo(() => bindSetter("adminDaysRatesRules"), [bindSetter]);
 
   const handleResetApp = (mode: ResetAppMode) => {
     resetApp(mode);
@@ -551,12 +548,8 @@ export default function App() {
                 employees={state.employees}
                 adminShifts={state.adminShifts}
                 setAdminShifts={setAdminShifts}
-                adminDaysRates={state.adminDaysRates}
-                adminDaysRatesRules={state.adminDaysRatesRules}
                 selectedDate={selectedDateUi}
                 allowAdminShiftEdits={preferences.allowAdminShiftEdits}
-                adminPaidWages={state.adminPaidWages}
-                setAdminPaidWages={setAdminPaidWages}
               />
             </Suspense>
           </div>
@@ -593,10 +586,6 @@ export default function App() {
                   }}
                   materialConsumptions={state.materialConsumptions}
                   setMaterialConsumptions={setMaterialConsumptions}
-                  adminDaysRates={state.adminDaysRates}
-                  setAdminDaysRates={setAdminDaysRates}
-                  adminDaysRatesRules={state.adminDaysRatesRules}
-                  setAdminDaysRatesRules={setAdminDaysRatesRules}
                   extraTransactions={state.extraTransactions}
                   setExtraTransactions={setExtraTransactions}
                   visits={state.visits}
